@@ -1,0 +1,152 @@
+---
+title: "Authentication, OTP 2FA, and Password Management"
+sidebarTitle: "Authentication"
+description: "Configure django-var-cms login, optional email OTP two-factor authentication, forgot password flow, and in-dashboard password reset for your team."
+---
+
+django-var-cms ships a complete, self-contained authentication layer for its control panel. Every route — login, OTP verification, forgot-password, and password reset — is rendered inside the same glassmorphic dark-mode shell as the rest of the panel, so your team never leaves the CMS experience to manage their credentials.
+
+## Login Interface
+
+The custom login page is available at `/var-cms/login/` the moment you mount the URLs. Point Django's built-in `LOGIN_URL` setting at it so unauthenticated requests are redirected there automatically.
+
+```python
+# settings.py
+LOGIN_URL = "/var-cms/login/"
+LOGIN_REDIRECT_URL = "/var-cms/"
+```
+
+If the user is already authenticated, visiting `/var-cms/login/` redirects straight to the dashboard index — no double-login prompt.
+
+---
+
+## Optional OTP Two-Factor Authentication
+
+By default, a correct username/password immediately logs the user in. When you enable OTP 2FA, a successful credential check instead sends a **6-digit one-time code** to the user's email address and redirects to the verification screen at `/var-cms/otp-verify/`. The user must enter the correct code to complete the login.
+
+<Steps>
+  <Step title="Enable OTP in settings.py">
+    ```python
+    # settings.py
+    VAR_CMS_ENABLE_OTP = True
+    ```
+  </Step>
+  <Step title="Configure Django's email backend">
+    ```python
+    # settings.py
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = "smtp.example.com"
+    EMAIL_PORT = 587
+    EMAIL_USE_TLS = True
+    EMAIL_HOST_USER = "noreply@example.com"
+    EMAIL_HOST_PASSWORD = "your-smtp-password"
+    ```
+  </Step>
+  <Step title="(Optional) Set via var_cms_site directly">
+    You can also toggle OTP programmatically in `var_cms_admin.py`, which overrides the settings value at startup:
+    ```python
+    # myapp/var_cms_admin.py
+    from var_cms.registry import var_cms_site
+
+    var_cms_site.enable_otp = True
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  **Development tip — no SMTP required.** If email sending fails (e.g. SMTP is not configured), the library falls back gracefully and prints the OTP directly to your terminal:
+
+  ```
+  [VAR CMS OTP]: 847291 for user admin
+  ```
+
+  This means you are never locked out during local development even without a working mail server.
+</Tip>
+
+<Note>
+  `VAR_CMS_ENABLE_OTP` defaults to `False`. OTP is entirely opt-in — you only need email configured if you enable it.
+</Note>
+
+<Warning>
+  OTP codes are stored in Django's session framework (`request.session`). Make sure `SESSION_ENGINE` and your session middleware are properly configured before enabling OTP in production. The default database-backed session engine works out of the box.
+</Warning>
+
+---
+
+## Forgot Password Flow
+
+A **Forgot Password** link on the login screen lets users recover access without admin intervention. The flow lives at `/var-cms/forgot-password/`.
+
+<Steps>
+  <Step title="Enter username or email">
+    The user submits their Django username **or** email address. The view searches both fields, so either works.
+  </Step>
+  <Step title="Receive a reset OTP">
+    A 6-digit reset code is emailed to the account's registered email address. As with login OTP, if SMTP is unavailable the code is printed to the terminal as `[VAR CMS RESET OTP]: ######`.
+  </Step>
+  <Step title="Set a new password">
+    The user is taken to `/var-cms/forgot-password/verify/` where they enter the OTP plus their new password (confirmed twice). New passwords must be at least 6 characters. On success the user is redirected to the login page.
+  </Step>
+</Steps>
+
+<Note>
+  If the matched user account has **no email address** configured in Django, the view displays the error:
+  *"This user does not have an email address configured."*
+  Make sure every staff account has an email set in Django admin or your user management interface.
+</Note>
+
+---
+
+## In-Dashboard Password Reset
+
+Logged-in users can update their own password without leaving the control panel. The change-password form is at `/var-cms/change-password/` and is accessible via the **User Profile Badge → Reset Password** menu item.
+
+The form enforces three rules before saving:
+
+| Rule | Behaviour |
+|------|-----------|
+| Old password must be correct | Shows *"Current password is incorrect."* |
+| New password must match confirmation | Shows *"New passwords do not match."* |
+| New password must be ≥ 6 characters | Shows *"New password must be at least 6 characters."* |
+
+After a successful change, `update_session_auth_hash` is called automatically — the user stays logged in without needing to re-authenticate.
+
+---
+
+## Logout
+
+Visiting `/var-cms/logout/` (or clicking **Logout** in the user menu) clears the Django session and redirects the browser back to `/var-cms/login/`.
+
+---
+
+## Quick-Reference Settings
+
+```python
+# settings.py
+
+# ── Authentication routing ─────────────────────────────────────────────────
+LOGIN_URL = "/var-cms/login/"
+LOGIN_REDIRECT_URL = "/var-cms/"
+
+# ── Optional OTP 2FA ──────────────────────────────────────────────────────
+VAR_CMS_ENABLE_OTP = True   # default: False
+
+# ── Email backend (required when OTP is enabled) ──────────────────────────
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.example.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = "noreply@example.com"
+EMAIL_HOST_PASSWORD = "your-smtp-password"
+```
+
+### URL Reference
+
+| URL | Description |
+|-----|-------------|
+| `/var-cms/login/` | Glassmorphic login form |
+| `/var-cms/otp-verify/` | OTP entry screen (only reached after valid credentials when OTP is enabled) |
+| `/var-cms/forgot-password/` | Enter username or email to start password recovery |
+| `/var-cms/forgot-password/verify/` | Enter reset OTP and choose a new password |
+| `/var-cms/change-password/` | In-dashboard password reset (requires login) |
+| `/var-cms/logout/` | Clears session, redirects to login |

@@ -1,0 +1,329 @@
+---
+title: "django-var-cms Template Tags and Filters Reference"
+sidebarTitle: "Template Tags"
+description: "Reference for all django-var-cms template tags including URL helpers (var_cms_list_url, var_cms_edit_url), field preview, query_transform, and form layout filters."
+---
+
+The `var_cms_tags` library provides template tags and filters used throughout the django-var-cms admin interface. Load the library in any template before using its tags or filters:
+
+```html
+{% load var_cms_tags %}
+```
+
+---
+
+## URL Helper Tags
+
+These simple tags resolve the named URL patterns registered by django-var-cms for standard CRUD views, using Django's `reverse()` internally. They accept the Django app label and model name as lowercase strings.
+
+### `var_cms_list_url`
+
+Returns the URL for the paginated list view of a model.
+
+```
+{% var_cms_list_url app model_name %}
+```
+
+**Example:**
+
+```html
+{% load var_cms_tags %}
+<a href="{% var_cms_list_url 'demo' 'article' %}">All Articles</a>
+```
+
+---
+
+### `var_cms_add_url`
+
+Returns the URL for the add / create form of a model.
+
+```
+{% var_cms_add_url app model_name %}
+```
+
+**Example:**
+
+```html
+<a href="{% var_cms_add_url 'demo' 'article' %}">New Article</a>
+```
+
+---
+
+### `var_cms_edit_url`
+
+Returns the URL for the edit form of a specific object instance.
+
+```
+{% var_cms_edit_url app model_name pk %}
+```
+
+**Example:**
+
+```html
+<a href="{% var_cms_edit_url 'demo' 'article' article.pk %}">Edit</a>
+```
+
+---
+
+### `var_cms_delete_url`
+
+Returns the URL for the delete confirmation page of a specific object instance.
+
+```
+{% var_cms_delete_url app model_name pk %}
+```
+
+**Example:**
+
+```html
+<a href="{% var_cms_delete_url 'demo' 'article' article.pk %}">Delete</a>
+```
+
+---
+
+### `var_cms_view_url`
+
+Returns the URL for the read-only detail view of a specific object instance.
+
+```
+{% var_cms_view_url app model_name pk %}
+```
+
+**Example:**
+
+```html
+<a href="{% var_cms_view_url 'demo' 'article' article.pk %}">View</a>
+```
+
+---
+
+### `var_cms_action_url`
+
+Returns the URL for a custom object action registered on a `VarCMSModelAdmin`. The `action_name` must match the `name` key of an entry in `custom_object_actions`.
+
+```
+{% var_cms_action_url app model_name pk action_name %}
+```
+
+**Example:**
+
+```html
+<a href="{% var_cms_action_url 'demo' 'article' article.pk 'approve' %}">Approve</a>
+```
+
+---
+
+## Field Preview Tag
+
+### `var_cms_field_preview`
+
+Renders an inline HTML preview snippet for an `ImageField` or `FileField` on an existing model instance. Returns an empty string if the object is `None`, the field has no value, or the field is neither an `ImageField` nor a `FileField`.
+
+```
+{% var_cms_field_preview obj field_name %}
+```
+
+| Field type | Rendered output |
+| ---------- | --------------- |
+| `ImageField` | `<img>` tag with `class="preview-thumb"` and a `data-preview` attribute pointing to the image URL. Displayed at 48×48 px. |
+| `FileField` | A Lucide icon (auto-selected by file extension) followed by an `<a>` tag with `class="file-preview-link"`, `data-ext`, and `data-url` attributes. |
+
+**Icon mapping for FileField:**
+
+| Extension(s) | Lucide icon |
+| ------------ | ----------- |
+| `mp4`, `webm`, `mov` | `video` |
+| `mp3`, `wav`, `ogg` | `music` |
+| `pdf` | `file-text` |
+| *(all others)* | `paperclip` |
+
+**Example:**
+
+```html
+{% load var_cms_tags %}
+
+{# Image preview #}
+{% var_cms_field_preview asset 'image' %}
+
+{# File preview #}
+{% var_cms_field_preview asset 'file' %}
+```
+
+**Rendered output for an ImageField:**
+
+```html
+<img src="/media/var_cms/images/2024/01/photo.jpg"
+     class="preview-thumb"
+     data-preview="/media/var_cms/images/2024/01/photo.jpg"
+     title="Click to open"
+     style="height:48px;width:48px;" />
+```
+
+**Rendered output for a FileField (PDF):**
+
+```html
+<i data-lucide="file-text" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px;"></i>
+<a href="/media/var_cms/files/2024/01/report.pdf"
+   class="file-preview-link"
+   data-ext="pdf"
+   data-url="/media/var_cms/files/2024/01/report.pdf">report.pdf</a>
+```
+
+---
+
+## Filters
+
+### `safe_html`
+
+Marks a string value as safe HTML, bypassing Django's auto-escaping. Equivalent to the built-in `|safe` filter.
+
+```html
+{{ article.body|safe_html }}
+```
+
+---
+
+### `get_item`
+
+Dictionary lookup filter. Returns `dictionary[key]` or `None` if the key is absent or the value is not a dict-like object.
+
+```html
+{{ my_dict|get_item:some_key }}
+```
+
+**Example:**
+
+```html
+{% load var_cms_tags %}
+<span>{{ field_errors|get_item:field.html_name }}</span>
+```
+
+---
+
+### `index`
+
+List index filter. Returns `list[i]` or an empty string if the index is out of range or the value is not subscriptable.
+
+```html
+{{ my_list|index:2 }}
+```
+
+**Example:**
+
+```html
+{% load var_cms_tags %}
+<p>First item: {{ items|index:0 }}</p>
+```
+
+---
+
+## `query_transform` Tag
+
+A context-aware tag that builds a URL-encoded query string by merging the current request's `GET` parameters with the provided keyword arguments. Useful for building pagination, filter, and sort links that preserve existing query state.
+
+```
+{% query_transform key=value key2=value2 %}
+```
+
+- Pass a new value for a key to set or override it.
+- Pass `None` as the value for a key to **remove** it from the query string.
+
+<Note>
+  This tag requires the `request` object in the template context. Ensure `django.template.context_processors.request` is included in your `TEMPLATES` settings.
+</Note>
+
+**Example — pagination links:**
+
+```html
+{% load var_cms_tags %}
+
+{% if page_obj.has_previous %}
+  <a href="?{% query_transform page=page_obj.previous_page_number %}">Previous</a>
+{% endif %}
+
+{% if page_obj.has_next %}
+  <a href="?{% query_transform page=page_obj.next_page_number %}">Next</a>
+{% endif %}
+```
+
+**Example — remove a filter while keeping others:**
+
+```html
+<a href="?{% query_transform status=None %}">Clear status filter</a>
+```
+
+---
+
+## Form Layout Filters
+
+These filters are used internally by django-var-cms form templates to drive the responsive 12-column grid layout. They are powered by attributes set on the `VarCMSModelAdmin` registration class.
+
+### `form_field_grid_style`
+
+Returns a CSS `grid-column: span N;` style string for the given bound field. The filter resolves the span using the following priority order:
+
+1. **`form_field_widths`** — explicit override on the admin class.
+2. **`form_field_rows`** — if the field is part of a row group, span is computed as `12 ÷ len(row)`.
+3. **Default heuristic** — `Textarea` and `Checkbox` widgets span 12 columns (full width); all other inputs span 6 columns (half width).
+
+If the admin class defines `form_field_styles` for the field, those inline styles are appended to the result.
+
+```html
+{{ field|form_field_grid_style:admin }}
+```
+
+**Width preset → grid-column mapping:**
+
+| Preset | CSS output |
+| ------ | ---------- |
+| `"full"` | `grid-column: span 12;` |
+| `"half"` | `grid-column: span 6;` |
+| `"one-third"` | `grid-column: span 4;` |
+| `"two-thirds"` | `grid-column: span 8;` |
+| `"one-fourth"` | `grid-column: span 3;` |
+| `"three-fourths"` | `grid-column: span 9;` |
+
+**Example usage in a form template:**
+
+```html
+{% load var_cms_tags %}
+{% for field in form %}
+  <div style="{{ field|form_field_grid_style:admin }}">
+    {{ field.label_tag }}
+    {{ field }}
+  </div>
+{% endfor %}
+```
+
+---
+
+### `field_widget_type`
+
+Returns the custom widget type string for a field, as defined in `form_field_widgets` on the `VarCMSModelAdmin` class. Returns an empty string if no custom widget is configured.
+
+```html
+{{ field|field_widget_type:admin }}
+```
+
+**Possible return values:**
+
+| Value | Widget behaviour |
+| ----- | ---------------- |
+| `"select"` | Standard HTML `<select>` dropdown |
+| `"select_search"` | Searchable dropdown with live filter input |
+| `"multiselect"` | Checkbox list for multi-selection |
+| `"multiselect_search"` | Checkbox list with a search/filter input |
+| `""` *(empty)* | No override — default Django widget renders |
+
+**Example usage:**
+
+```html
+{% load var_cms_tags %}
+{% with widget_type=field|field_widget_type:admin %}
+  {% if widget_type == "select_search" %}
+    {# Render custom searchable select #}
+  {% else %}
+    {{ field }}
+  {% endif %}
+{% endwith %}
+```

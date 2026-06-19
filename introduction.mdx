@@ -1,0 +1,117 @@
+---
+title: "django-var-cms: Modern Admin Control Panel for Django"
+sidebarTitle: "Introduction"
+description: "django-var-cms is a drop-in CMS registry for Django that auto-discovers model registrations, enforces role-based permissions, and ships a glassmorphic dark UI."
+---
+
+django-var-cms is a modern, highly customizable administrative control panel and CMS registry for Django projects. Instead of wrestling with Django's built-in admin or wiring up a heavyweight third-party CMS, you drop `"var_cms"` into `INSTALLED_APPS`, create a `var_cms_admin.py` file inside any app, and your models immediately appear in a premium glassmorphic dark dashboard — complete with role-based access control, a Quill.js rich-text editor, image cropping, and media conversion APIs.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Glassmorphic Dark UI" icon="palette">
+    A fully responsive, premium dark interface with a collapsible navigation sidebar whose state is persisted via `localStorage`. Accent colors are configurable with HSL values and a 12-column form grid with flexible width presets.
+  </Card>
+  <Card title="Role-Based Permissions" icon="shield-check">
+    Fine-grained `add`, `list`, `view`, `edit`, and `delete` actions per Django Group or individual user account. Per-role field-level edit restrictions via `role_editable_fields` keep sensitive data safe across every model.
+  </Card>
+  <Card title="Quill.js Rich-Text Editor" icon="pen-line">
+    Declare any `TextField` as an HTML field with `html_fields = ["body"]` and the form automatically renders a full-featured Quill.js WYSIWYG editor — no extra configuration required.
+  </Card>
+  <Card title="Image Cropper & Previews" icon="image">
+    Modal-based previews for images, video, audio, and PDFs. The built-in image cropper supports rotation, flip, and custom aspect ratios, exposed via the `/var-cms/api/media/crop/` endpoint.
+  </Card>
+  <Card title="Media File Conversion" icon="file-symlink">
+    A dedicated `/var-cms/api/media/convert/` POST endpoint converts uploaded files between common formats — JPEG, PNG, WebP, WAV, MP3, and MP4 — powered by Pillow and optionally `pdf2image`.
+  </Card>
+  <Card title="OTP Two-Factor Authentication" icon="lock-keyhole">
+    Optional email-based OTP 2FA on login. Enable it with a single setting: `VAR_CMS_ENABLE_OTP = True`. During development, if SMTP is not configured the code is printed directly to the terminal so you are never locked out.
+  </Card>
+</CardGroup>
+
+## Architecture Overview
+
+### Auto-Discovery
+
+django-var-cms follows the same auto-discovery pattern as Django's admin. When Django boots, `VarCmsConfig.ready()` in `var_cms/apps.py` iterates over every installed app and attempts to import `<app_name>.var_cms_admin`:
+
+```python
+# var_cms/apps.py
+from django.apps import AppConfig
+
+class VarCmsConfig(AppConfig):
+    name = "var_cms"
+    verbose_name = "VAR CMS"
+
+    def ready(self):
+        from django.apps import apps
+        for app_config in apps.get_app_configs():
+            try:
+                __import__(f"{app_config.name}.var_cms_admin")
+            except ModuleNotFoundError:
+                pass
+```
+
+Any app that contains a `var_cms_admin.py` module is automatically loaded. Missing files are silently skipped; import errors in existing files are logged as warnings so nothing crashes on startup.
+
+### The `VarCMSSite` Singleton
+
+All registrations flow through the global `var_cms_site` singleton defined in `var_cms/registry.py`:
+
+```python
+from var_cms.registry import var_cms_site
+```
+
+`VarCMSSite` holds an internal `_registry` dict mapping Django model classes to their `VarCMSModelAdmin` instances. At request time, `get_urls()` generates URL patterns for every registered model and `_base_ctx()` builds the navigation sidebar from models for which the current user has `list` permission.
+
+### `VarCMSModelAdmin` Registration Pattern
+
+Each model is paired with a `VarCMSModelAdmin` subclass that declares display, search, filter, permission, and form-layout options. The subclass is instantiated once and stored in the registry:
+
+```python
+# myapp/var_cms_admin.py
+from var_cms.registry import var_cms_site, VarCMSModelAdmin
+from var_cms.permissions import RolePermission
+from .models import Article
+
+class ArticleAdmin(VarCMSModelAdmin):
+    list_display  = ["title", "author", "status", "created_at"]
+    search_fields = ["title", "body"]
+    list_filter   = ["status"]
+    ordering      = ["-created_at"]
+    icon          = "file-text"
+
+    permissions = [
+        RolePermission("superuser", add=True, list=True, view=True, edit=True, delete=True),
+        RolePermission("editor",    add=True, list=True, view=True, edit=True, delete=False),
+    ]
+
+var_cms_site.register(Article, ArticleAdmin)
+```
+
+All `VarCMSModelAdmin` options are optional — sensible defaults apply for every attribute.
+
+## URL Structure
+
+Every URL is nested under the prefix you choose when including `var_cms.urls` (conventionally `/var-cms/`).
+
+| URL Pattern | Description |
+|---|---|
+| `/var-cms/` | Dashboard — registered model cards with record counts |
+| `/var-cms/{app}/{model}/` | Paginated list view with search, filter, and sort |
+| `/var-cms/{app}/{model}/add/` | Object creation form |
+| `/var-cms/{app}/{model}/{pk}/` | Object modification form |
+| `/var-cms/{app}/{model}/{pk}/view/` | Read-only detail view |
+| `/var-cms/{app}/{model}/{pk}/delete/` | Delete confirmation page |
+| `/var-cms/api/media/crop/` | `POST` — crop an image (rotate, flip, aspect ratio) |
+| `/var-cms/api/media/convert/` | `POST` — convert a media file to a different format |
+
+<Note>
+  Authentication routes (`/var-cms/login/`, `/var-cms/logout/`, `/var-cms/otp-verify/`, `/var-cms/forgot-password/`, and `/var-cms/change-password/`) are also included automatically — no extra URL wiring needed.
+</Note>
+
+## Requirements
+
+<Note>
+  django-var-cms requires **Django >= 5.0**, **Python >= 3.11**, **Pillow >= 10.0**, and **WhiteNoise >= 6.6**. These are declared as hard dependencies in `pyproject.toml` and are installed automatically when you `pip install django-var-cms`.
+</Note>

@@ -1,0 +1,492 @@
+---
+title: "VarCMSModelAdmin Class Reference"
+sidebarTitle: "VarCMSModelAdmin"
+description: "Complete attribute and method reference for VarCMSModelAdmin — the base class used to register Django models with the django-var-cms Control Panel."
+---
+
+`VarCMSModelAdmin` is the base class you subclass and pass to `var_cms_site.register()`. Every attribute is optional — sensible defaults apply out of the box so you can start with a minimal class and layer in customization as needed.
+
+```python
+from var_cms.registry import var_cms_site, VarCMSModelAdmin
+```
+
+---
+
+## List View Attributes
+
+These attributes control the paginated list view rendered for each registered model.
+
+<ParamField path="list_display" type="List[str]" default="[]">
+  Column fields shown in the list view table. Each entry is a model field name or a double-underscore traversal (e.g., `"category__name"`). When left empty, the first six concrete model fields are used automatically (populated in `__init__`).
+</ParamField>
+
+<ParamField path="list_filter" type="List[str]" default="[]">
+  Fields used to generate filter sidebar widgets. The widget type is inferred from the field type: `BooleanField` → toggle, `DateField` / `DateTimeField` → date-range, `ForeignKey` → select, `IntegerField` / `FloatField` → number-range, everything else → text input.
+</ParamField>
+
+<ParamField path="search_fields" type="List[str]" default="[]">
+  Fields searched with a case-insensitive `icontains` lookup. Multiple fields are ORed together.
+
+  ```python
+  search_fields = ["title", "body", "author"]
+  ```
+</ParamField>
+
+<ParamField path="ordering" type="List[str]" default="[]">
+  Default queryset ordering passed directly to Django's `order_by()`. Prefix a field with `-` to sort descending.
+
+  ```python
+  ordering = ["-created_at"]
+  ```
+</ParamField>
+
+<ParamField path="list_per_page" type="int" default="25">
+  Number of rows displayed per page. The built-in paginator uses this value.
+</ParamField>
+
+<ParamField path="list_select_related" type="bool" default="False">
+  When `True`, calls `.select_related()` on the base queryset, eagerly loading related objects and reducing N+1 queries for `ForeignKey` columns in `list_display`.
+</ParamField>
+
+<ParamField path="list_image_width" type="int" default="38">
+  Thumbnail width in pixels for `ImageField` columns rendered in the list view.
+</ParamField>
+
+<ParamField path="list_image_height" type="int" default="38">
+  Thumbnail height in pixels for `ImageField` columns rendered in the list view.
+</ParamField>
+
+---
+
+## Form Attributes
+
+These attributes shape the add/edit form — which fields appear, how they look, and how they are validated.
+
+<ParamField path="readonly_fields" type="List[str]" default="[]">
+  Fields that are always shown on the form but are never editable by anyone (including superusers). Their rendered values are displayed as read-only text alongside the form.
+
+  ```python
+  readonly_fields = ["created_at", "updated_at", "view_count"]
+  ```
+</ParamField>
+
+<ParamField path="exclude_fields" type="List[str]" default="[]">
+  Fields hidden from the form entirely. Unlike `readonly_fields`, excluded fields are not shown at all.
+</ParamField>
+
+<ParamField path="html_fields" type="List[str]" default="[]">
+  Fields rendered with the integrated **Quill.js** rich-text editor instead of a plain `<textarea>`. Only applicable to `TextField` fields.
+
+  ```python
+  html_fields = ["body", "description"]
+  ```
+</ParamField>
+
+<ParamField path="regex_validators" type="Dict[str, tuple]" default="{}">
+  Per-field regex validation applied both **server-side** (via Django's `RegexValidator`) and **client-side** (via the HTML `pattern` attribute).
+
+  The value for each field is a `(pattern, error_message)` tuple:
+
+  ```python
+  regex_validators = {
+      "slug": (r"^[a-z0-9-]+$", "Slug must only contain lowercase letters, numbers, and hyphens."),
+  }
+  ```
+</ParamField>
+
+<ParamField path="form_field_widths" type="Dict[str, str]" default="{}">
+  Width presets for individual fields. The form uses a 12-column grid. Available values:
+
+  | Preset | Columns | Description |
+  |---|---|---|
+  | `"full"` | 12 | Full form width. Default for checkboxes and textareas. |
+  | `"half"` | 6 | Half width. Default for most other fields. |
+  | `"one-third"` | 4 | One-third width. |
+  | `"two-thirds"` | 8 | Two-thirds width. |
+  | `"one-fourth"` | 3 | One-fourth width. |
+  | `"three-fourths"` | 9 | Three-fourths width. |
+
+  ```python
+  form_field_widths = {
+      "title":    "two-thirds",
+      "status":   "one-third",
+      "category": "half",
+  }
+  ```
+</ParamField>
+
+<ParamField path="form_field_rows" type="List[List[str]]" default="[]">
+  Group multiple fields into a single visual row. Fields within the same row automatically share the available width equally (e.g., three fields → 4 columns each on a 12-column grid). Row groupings override any individual `form_field_widths` entry for those fields.
+
+  ```python
+  form_field_rows = [
+      ["first_name", "last_name"],
+      ["mobile", "email", "date_of_birth"],
+  ]
+  ```
+</ParamField>
+
+<ParamField path="form_field_widgets" type="Dict[str, str]" default="{}">
+  Override the widget rendered for a specific field. Useful for `ForeignKey`, `CharField` with choices, and `ManyToManyField` fields.
+
+  | Widget type | Rendered as |
+  |---|---|
+  | `"select"` | Standard HTML `<select>` dropdown (default; no override needed). |
+  | `"select_search"` | Searchable dropdown with a live-filter input. |
+  | `"multiselect"` | Checkbox list for multi-selection (no search). |
+  | `"multiselect_search"` | Checkbox list with a search input above it. |
+
+  ```python
+  form_field_widgets = {
+      "status":   "select",
+      "customer": "select_search",
+      "tags":     "multiselect_search",
+  }
+  ```
+
+  <Note>
+    `multiselect` and `multiselect_search` work best with `ManyToManyField` fields. Use `select_search` for `ForeignKey` fields.
+  </Note>
+</ParamField>
+
+<ParamField path="form_field_classes" type="Dict[str, str]" default="{}">
+  Extra CSS classes applied to the **container `<div>`** that wraps each field (label + input).
+
+  ```python
+  form_field_classes = {
+      "title": "highlighted-field",
+  }
+  ```
+</ParamField>
+
+<ParamField path="form_field_styles" type="Dict[str, str]" default="{}">
+  Inline CSS applied to the **container `<div>`** that wraps each field.
+
+  ```python
+  form_field_styles = {
+      "body": "border-top: 2px solid var(--accent);",
+  }
+  ```
+</ParamField>
+
+<ParamField path="form_widget_classes" type="Dict[str, str]" default="{}">
+  CSS classes injected directly on the **`<input>` / `<select>` / `<textarea>`** element itself (not the wrapper div).
+
+  ```python
+  form_widget_classes = {
+      "title": "form-control-lg",
+  }
+  ```
+</ParamField>
+
+<ParamField path="form_field_placeholders" type="Dict[str, str]" default="{}">
+  Placeholder text rendered inside each input element.
+
+  ```python
+  form_field_placeholders = {
+      "title": "Enter article title...",
+      "slug":  "auto-generated-if-blank",
+  }
+  ```
+</ParamField>
+
+<ParamField path="form_field_help_texts" type="Dict[str, str]" default="{}">
+  Help text displayed below each field, overriding any help text set on the model field itself.
+
+  ```python
+  form_field_help_texts = {
+      "body": "Write the full article content using the Quill editor.",
+      "tags": "Comma-separated tags, e.g. python, django, cms.",
+  }
+  ```
+</ParamField>
+
+---
+
+## Permissions Attributes
+
+<ParamField path="permissions" type="List[RolePermission]" default="[]">
+  A list of [`RolePermission`](/api/permissions#rolepermission), [`GroupPermission`](/api/permissions#grouppermission), or [`UserPermission`](/api/permissions#userpermission) objects defining which actions each role or user may perform.
+
+  When this list is empty the legacy `allow_add` / `allow_edit` / `allow_delete` flags are used as a fallback, and only authenticated superusers have unrestricted access.
+
+  ```python
+  from var_cms.permissions import RolePermission, UserPermission
+
+  permissions = [
+      RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+      RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+      RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+      # Per-user override — alice can delete despite being in the viewer group
+      UserPermission("alice",     add=True,  list=True, view=True, edit=True,  delete=True),
+  ]
+  ```
+</ParamField>
+
+<ParamField path="role_editable_fields" type="Dict[str, Union[List[str], str]]" default="{}">
+  Maps each role name to the subset of fields that role is allowed to edit. Use the string `"__all__"` to permit editing every non-readonly field.
+
+  The special key `"*"` acts as a wildcard for any role not explicitly listed. An empty list `[]` denies all edits.
+
+  ```python
+  role_editable_fields = {
+      "superuser": "__all__",
+      "editor":    ["title", "slug", "body", "status"],
+      "author":    ["title", "body", "status"],
+      "*":         [],   # all other roles: no edits
+  }
+  ```
+</ParamField>
+
+<ParamField path="allow_add" type="bool" default="True">
+  **Legacy fallback only.** Permits the add action when `permissions = []`. Ignored when `permissions` is populated.
+</ParamField>
+
+<ParamField path="allow_edit" type="bool" default="True">
+  **Legacy fallback only.** Permits the edit action when `permissions = []`. Ignored when `permissions` is populated.
+</ParamField>
+
+<ParamField path="allow_delete" type="bool" default="True">
+  **Legacy fallback only.** Permits the delete action when `permissions = []`. Ignored when `permissions` is populated.
+</ParamField>
+
+<Warning>
+  Once you set `permissions = [...]`, the `allow_add`, `allow_edit`, and `allow_delete` attributes have no effect. Define all access rules through the `permissions` list.
+</Warning>
+
+---
+
+## Display Attributes
+
+<ParamField path="icon" type="str" default='""'>
+  A [Lucide](https://lucide.dev/icons/) icon name displayed next to the model in the sidebar navigation and on dashboard cards.
+
+  ```python
+  icon = "file-text"   # renders the file-text Lucide icon
+  ```
+</ParamField>
+
+<ParamField path="dashboard_card" type="bool" default="False">
+  When `True`, a summary card for this model appears on the dashboard. The card shows a live object count and the buttons defined in `card_buttons`.
+</ParamField>
+
+<ParamField path="card_buttons" type="List[Dict]" default="[]">
+  Quick-action buttons rendered at the bottom of the dashboard card. Each button is a dict with the following keys:
+
+  | Key | Required | Description |
+  |---|---|---|
+  | `label` | ✅ | Button text. |
+  | `action` | — | Built-in shortcut: `"list"` or `"add"`. The URL is resolved automatically. |
+  | `url` | — | Explicit URL (used when `action` is not set). |
+  | `class` | — | CSS class: `"btn-primary"`, `"btn-ghost"`, `"btn-danger"`, etc. |
+
+  When `card_buttons` is empty and `dashboard_card = True`, a **View List** and (if permitted) **Add New** button are added automatically.
+
+  ```python
+  card_buttons = [
+      {"label": "All Articles", "action": "list"},
+      {"label": "Write Draft",  "action": "add"},
+      {"label": "External",     "url": "https://example.com", "class": "btn-ghost"},
+  ]
+  ```
+</ParamField>
+
+<ParamField path="custom_object_actions" type="List[Dict]" default="[]">
+  Action buttons rendered in **list view row menus** and on **detail view pages**. Each action is a dict:
+
+  | Key | Required | Description |
+  |---|---|---|
+  | `name` | ✅ | Unique identifier used in the URL (`/var-cms/{app}/{model}/{pk}/action/{name}/`). |
+  | `label` | ✅ | Button text. |
+  | `action_fn` | ✅ | A callable or a string naming a method on the admin class. Receives `(request, obj)`. Return `None` to redirect back, or return an `HttpResponse`. |
+  | `class` | — | CSS class: `"btn-primary"`, `"btn-green"`, `"btn-blue"`, `"btn-danger"`, `"btn-ghost"`. |
+  | `icon` | — | Lucide icon name shown on the button. |
+
+  ```python
+  custom_object_actions = [
+      {
+          "name":      "toggle_active",
+          "label":     "Toggle Active",
+          "class":     "btn-blue",
+          "icon":      "shuffle",
+          "action_fn": "toggle_active_status",
+      }
+  ]
+
+  def toggle_active_status(self, request, obj):
+      obj.is_active = not obj.is_active
+      obj.save()
+      return None   # redirects to referer
+  ```
+</ParamField>
+
+---
+
+## Methods
+
+### `get_queryset(request) → QuerySet`
+
+Returns the base queryset used for all list and detail views. Override to filter records, annotate fields, or apply custom ordering.
+
+```python
+def get_queryset(self, request):
+    qs = super().get_queryset(request)
+    # Only show published articles to non-superusers
+    if not request.user.is_superuser:
+        qs = qs.filter(status="published")
+    return qs
+```
+
+The default implementation calls `self.model._default_manager.all()`, optionally calls `.select_related()` when `list_select_related = True`, and applies `ordering` if set.
+
+---
+
+### `save_model(request, obj, form, change: bool)`
+
+Called after `form.is_valid()` on both the add and edit views. Use this hook to run custom pre- or post-save logic.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `request` | `HttpRequest` | The current request. |
+| `obj` | `Model instance` | The unsaved model instance (form data already applied). |
+| `form` | `ModelForm` | The validated form instance. |
+| `change` | `bool` | `False` on add, `True` on edit. |
+
+The **default implementation** auto-slugifies the `slug` field from `title`, `name`, or `headline` (in that priority) if `slug` is blank, then calls `obj.save()`.
+
+```python
+def save_model(self, request, obj, form, change: bool):
+    obj.author = request.user.get_username()
+    super().save_model(request, obj, form, change)
+```
+
+---
+
+### `delete_model(request, obj)`
+
+Called when a delete is confirmed. Override to add cascading cleanup, audit logging, or soft-delete logic. The default implementation calls `obj.delete()`.
+
+```python
+def delete_model(self, request, obj):
+    # Archive instead of hard-delete
+    obj.status = "archived"
+    obj.save()
+```
+
+---
+
+### `has_permission(request, action: str) → bool`
+
+Returns `True` if the current user is allowed to perform `action` on this model.
+
+`action` must be one of: `"add"`, `"list"`, `"view"`, `"edit"`, `"delete"`.
+
+Resolution order:
+1. If `permissions` is empty → falls back to `allow_add` / `allow_edit` / `allow_delete` flags (`list` and `view` always return `True` in fallback mode).
+2. If `permissions` is populated → delegates to [`resolve_permission()`](/api/permissions#resolve_permission) with the user's role and username.
+
+<Note>
+  Unauthenticated users always receive `False` regardless of the `permissions` list.
+</Note>
+
+---
+
+### `get_editable_fields(request) → Union[List[str], str]`
+
+Returns the fields the current user is allowed to edit: either a list of field names, or `"__all__"` (meaning every non-readonly field).
+
+The method determines the user's role via `_get_user_role(request)` and delegates to [`resolve_editable_fields()`](/api/permissions#resolve_editable_fields).
+
+When `role_editable_fields` is empty, `"__all__"` is returned for every user.
+
+```python
+def save_model(self, request, obj, form, change: bool):
+    editable = self.get_editable_fields(request)
+    if editable != "__all__" and "status" not in editable:
+        # Prevent status tampering outside the hook
+        obj.status = obj.__class__.objects.get(pk=obj.pk).status
+    super().save_model(request, obj, form, change)
+```
+
+---
+
+## Full Example
+
+```python
+# myapp/var_cms_admin.py
+from var_cms.registry import var_cms_site, VarCMSModelAdmin
+from var_cms.permissions import RolePermission, UserPermission
+from .models import Article
+
+
+class ArticleAdmin(VarCMSModelAdmin):
+    # ── List view ──────────────────────────────────────────────────
+    list_display     = ["title", "category", "author", "status", "created_at"]
+    list_filter      = ["status", "is_featured", "category"]
+    search_fields    = ["title", "body", "author"]
+    ordering         = ["-created_at"]
+    list_per_page    = 20
+    list_select_related = True
+
+    # ── Form ───────────────────────────────────────────────────────
+    readonly_fields  = ["created_at", "updated_at", "view_count"]
+    html_fields      = ["body"]
+    regex_validators = {
+        "slug": (r"^[a-z0-9-]+$", "Slug must only contain lowercase letters, numbers, and hyphens."),
+    }
+    form_field_widths = {
+        "title":    "two-thirds",
+        "status":   "one-third",
+        "category": "half",
+        "author":   "half",
+    }
+    form_field_rows = [
+        ["first_name", "last_name"],
+    ]
+    form_field_placeholders = {
+        "title": "Enter article title...",
+    }
+    form_field_help_texts = {
+        "body": "Full article content — Quill editor is active.",
+    }
+
+    # ── Permissions ────────────────────────────────────────────────
+    permissions = [
+        RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+        RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("author",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+        UserPermission("alice",     add=True,  list=True, view=True, edit=True,  delete=True),
+    ]
+    role_editable_fields = {
+        "superuser": "__all__",
+        "editor":    ["title", "slug", "body", "status", "category", "is_featured"],
+        "author":    ["title", "body", "status"],
+        "*":         [],
+    }
+
+    # ── Display ────────────────────────────────────────────────────
+    icon            = "file-text"
+    dashboard_card  = True
+    card_buttons    = [
+        {"label": "All Articles", "action": "list"},
+        {"label": "Write Draft",  "action": "add"},
+    ]
+    custom_object_actions = [
+        {
+            "name":      "publish",
+            "label":     "Publish",
+            "class":     "btn-green",
+            "icon":      "check-circle",
+            "action_fn": "publish_article",
+        }
+    ]
+
+    def publish_article(self, request, obj):
+        obj.status = "published"
+        obj.save()
+        return None   # redirect back to referer
+
+
+var_cms_site.register(Article, ArticleAdmin)
+```

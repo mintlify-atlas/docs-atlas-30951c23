@@ -1,0 +1,331 @@
+---
+title: "VarCMSSite Class and var_cms_site Singleton"
+sidebarTitle: "VarCMSSite"
+description: "Reference for VarCMSSite methods and the global var_cms_site singleton used to register models, configure branding, and mount URL patterns in django-var-cms."
+---
+
+`VarCMSSite` is the central registry that maps Django models to their admin configurations, resolves URL patterns, and carries all branding and dashboard settings. You never instantiate it yourself — a single global instance named `var_cms_site` is created at module import time and is the object you import throughout your project.
+
+```python
+from var_cms.registry import var_cms_site
+```
+
+<Note>
+  `var_cms_site` is auto-configured from `VAR_CMS_*` keys in your `settings.py`. You can also override any attribute directly in your `var_cms_admin.py` file after the import, which is the recommended place for per-project branding.
+</Note>
+
+---
+
+## URL Mounting
+
+Include the CMS URL patterns in your project's `urls.py` once:
+
+```python
+# urls.py
+from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
+
+urlpatterns = [
+    path("var-cms/", include("var_cms.urls", namespace="var_cms")),
+]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+```
+
+The resulting URL structure is:
+
+```
+/var-cms/                              → Dashboard
+/var-cms/{app}/{model}/                → List view
+/var-cms/{app}/{model}/add/            → Add form
+/var-cms/{app}/{model}/{pk}/           → Edit form
+/var-cms/{app}/{model}/{pk}/view/      → Read-only detail view
+/var-cms/{app}/{model}/{pk}/delete/    → Delete confirmation
+/var-cms/{app}/{model}/{pk}/action/{name}/ → Custom object action
+/var-cms/api/media/crop/               → POST: crop image
+/var-cms/api/media/convert/            → POST: convert media file
+```
+
+---
+
+## Branding Attributes
+
+All branding attributes read their defaults from `VAR_CMS_*` keys in `settings.py` and can be overridden in `var_cms_admin.py`.
+
+<ParamField path="site_header" type="str" default='"VAR CMS"'>
+  The primary brand title displayed in the top-left of the sidebar and on the login page.
+
+  ```python
+  # settings.py
+  VAR_CMS_SITE_HEADER = "Acme CMS"
+
+  # or directly in var_cms_admin.py
+  var_cms_site.site_header = "Acme CMS"
+  ```
+</ParamField>
+
+<ParamField path="site_sub" type="str" default='"CONTROL PANEL"'>
+  Subtitle rendered below `site_header` in the sidebar header area.
+
+  ```python
+  VAR_CMS_SITE_SUB = "ADMIN PANEL"
+  ```
+</ParamField>
+
+<ParamField path="site_url" type="str" default='"/"'>
+  The URL used by the "View Site" link in the sidebar.
+
+  ```python
+  VAR_CMS_SITE_URL = "https://example.com"
+  ```
+</ParamField>
+
+<ParamField path="logo_url" type="str" default='"/static/var_cms/var.png"'>
+  Path or URL of the logo image. Used when `logo_svg` is `None`.
+
+  ```python
+  VAR_CMS_LOGO_URL = "/static/myapp/logo.png"
+  ```
+</ParamField>
+
+<ParamField path="logo_svg" type="Optional[str]" default="None">
+  Raw inline SVG markup for the logo. When set, this takes precedence over `logo_url`. Useful for dynamically colored vector logos.
+
+  ```python
+  var_cms_site.logo_svg = '<svg viewBox="0 0 24 24">...</svg>'
+  ```
+</ParamField>
+
+<ParamField path="accent_color" type="Optional[str]" default="None">
+  HSL accent color string in the format `"H, S%, L%"`. Controls the theme highlight color used across buttons, active states, and decorative elements.
+
+  The lightness value is automatically clamped between **45 %** and **85 %** to ensure legibility on both light and dark backgrounds.
+
+  ```python
+  VAR_CMS_ACCENT_COLOR = "142, 72%, 45%"   # Emerald green
+  var_cms_site.accent_color = "220, 80%, 55%"  # Blue
+  ```
+
+  <Tip>
+    Experiment with HSL values at [hslpicker.com](https://hslpicker.com). Any lightness you supply outside 45–85 % is silently clamped to the nearest bound.
+  </Tip>
+</ParamField>
+
+<ParamField path="enable_otp" type="bool" default="False">
+  When `True`, a successful username/password login redirects to an OTP verification step. A 6-digit code is emailed to the user. If SMTP is not configured, the code is printed to the terminal console as `[VAR CMS OTP]: xxxxxx`.
+
+  ```python
+  VAR_CMS_ENABLE_OTP = True
+  ```
+</ParamField>
+
+<ParamField path="dashboard_title" type="str" default='"Command Hub"'>
+  Heading text displayed at the top of the dashboard page.
+
+  ```python
+  VAR_CMS_DASHBOARD_TITLE = "Mission Control"
+  ```
+</ParamField>
+
+<ParamField path="dashboard_text" type="str" default='"Welcome back, {username}. Your central command is active…"'>
+  Welcome paragraph shown below the dashboard title. Supports `{username}` and `{user}` placeholders which are resolved to the logged-in user's username at render time.
+
+  ```python
+  VAR_CMS_DASHBOARD_TEXT = "Hello {username}, welcome to the control panel."
+  ```
+</ParamField>
+
+---
+
+## Developer Profile Attributes
+
+These attributes populate the **Help & Support** page accessible from the sidebar. All read from `VAR_CMS_DEVELOPER_*` settings keys and ship with Rahul Baberwal's contact details as built-in defaults.
+
+<ParamField path="developer_name" type="str" default='"Rahul Baberwal"'>
+  Display name of the developer or agency that built the CMS integration.
+
+  ```python
+  VAR_CMS_DEVELOPER_NAME = "Your Name"
+  ```
+</ParamField>
+
+<ParamField path="developer_website" type="str" default='"https://rahulbaberwal.com"'>
+  Developer or agency website URL.
+</ParamField>
+
+<ParamField path="developer_github" type="str" default='"https://github.com/rahul-baberwal"'>
+  GitHub profile or repository URL.
+</ParamField>
+
+<ParamField path="developer_linkedin" type="str" default='"https://linkedin.com/in/rahul-baberwal"'>
+  LinkedIn profile URL.
+</ParamField>
+
+<ParamField path="developer_email" type="str" default='"im@rahulbaberwal.com"'>
+  Contact email address.
+</ParamField>
+
+<ParamField path="developer_image" type="str" default='"https://github.com/rahul-baberwal.png"'>
+  URL of the developer's avatar or profile photo.
+</ParamField>
+
+---
+
+## Dashboard Visibility Attributes
+
+<ParamField path="hidden_dashboard_cards" type="List[str]" default="[]">
+  Model names or `"app_label.model_name"` strings whose dashboard cards are hidden regardless of the `dashboard_card` attribute on the model admin class.
+
+  ```python
+  VAR_CMS_HIDDEN_DASHBOARD_CARDS = ["logentry", "demo.category"]
+  ```
+</ParamField>
+
+<ParamField path="shown_dashboard_cards" type="List[str]" default="[]">
+  When non-empty, **only** the listed model names or `"app_label.model_name"` strings are shown as dashboard cards. All others are hidden. Takes precedence over `dashboard_card = True` on individual admin classes.
+
+  ```python
+  VAR_CMS_SHOWN_DASHBOARD_CARDS = ["invoice", "customer"]
+  ```
+
+  <Note>
+    `hidden_dashboard_cards` is evaluated **after** `shown_dashboard_cards`. A model in both lists will be hidden.
+  </Note>
+</ParamField>
+
+<ParamField path="username_field" type="Optional[str]" default="None">
+  Override the field name used to look up a user's username for `UserPermission` matching. When `None`, the value is inferred from `User.USERNAME_FIELD` (which defaults to `"username"` for Django's built-in User model).
+
+  ```python
+  VAR_CMS_USERNAME_FIELD = "email"   # if your custom User model uses email as the username
+  ```
+</ParamField>
+
+---
+
+## Methods
+
+### `register(model, admin_class=None, **options)`
+
+Register a Django model with the CMS.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `model` | `Type[Model]` | The Django model class to register. |
+| `admin_class` | `Type[VarCMSModelAdmin]` \| `None` | The admin class. Defaults to bare `VarCMSModelAdmin`. |
+| `**options` | `Any` | Keyword arguments are applied as class attributes on a dynamically created subclass of `admin_class`. |
+
+```python
+# Register with a custom admin class
+var_cms_site.register(Article, ArticleAdmin)
+
+# Register with inline options (no explicit subclass needed)
+var_cms_site.register(Tag, list_display=["name"], icon="tag")
+```
+
+<Warning>
+  Each model can only be registered once. Registering the same model a second time silently replaces the previous registration.
+</Warning>
+
+---
+
+### `unregister(model)`
+
+Remove a previously registered model from the CMS registry.
+
+```python
+var_cms_site.unregister(Article)
+```
+
+Silently does nothing if the model was never registered.
+
+---
+
+### `get_model_admin(app_label, model_name) → Optional[VarCMSModelAdmin]`
+
+Look up the `VarCMSModelAdmin` instance for a given model by its app label and model name (both lowercase).
+
+```python
+admin = var_cms_site.get_model_admin("demo", "article")
+if admin:
+    qs = admin.get_queryset(request)
+```
+
+Returns `None` if the model is not registered.
+
+---
+
+### `get_urls() → List[URLPattern]`
+
+Returns the complete list of URL patterns powering all CMS views: dashboard, login/logout, per-model list/add/edit/delete/view/action routes, and the media API endpoints. Called internally by `var_cms/urls.py` — you do not normally call this yourself.
+
+```python
+# var_cms/urls.py (internal — shown for reference)
+from .registry import var_cms_site
+urlpatterns = var_cms_site.get_urls()
+```
+
+---
+
+## Complete Branding Example
+
+```python
+# myapp/var_cms_admin.py
+from var_cms.registry import var_cms_site, VarCMSModelAdmin
+from .models import Article, Category
+
+# ── Branding ────────────────────────────────────────────────────────────────
+var_cms_site.site_header   = "Acme CMS"
+var_cms_site.site_sub      = "CONTROL PANEL"
+var_cms_site.site_url      = "https://acme.example.com"
+var_cms_site.logo_url      = "/static/myapp/logo.png"
+var_cms_site.accent_color  = "220, 80%, 55%"   # Blue
+var_cms_site.enable_otp    = False
+
+# ── Dashboard ───────────────────────────────────────────────────────────────
+var_cms_site.dashboard_title = "Acme Command Hub"
+var_cms_site.dashboard_text  = "Welcome, {username}. Manage your content below."
+
+# ── Developer profile ────────────────────────────────────────────────────────
+var_cms_site.developer_name    = "Acme Dev Team"
+var_cms_site.developer_website = "https://acme.example.com"
+var_cms_site.developer_email   = "devteam@acme.example.com"
+
+# ── Model registrations ──────────────────────────────────────────────────────
+class ArticleAdmin(VarCMSModelAdmin):
+    list_display  = ["title", "status", "created_at"]
+    icon          = "file-text"
+    dashboard_card = True
+
+var_cms_site.register(Category, list_display=["name", "slug"], icon="folder")
+var_cms_site.register(Article,  ArticleAdmin)
+```
+
+---
+
+## Settings Reference
+
+All `VAR_CMS_*` settings and their corresponding `var_cms_site` attribute names:
+
+| `settings.py` key | `var_cms_site` attribute | Default |
+|---|---|---|
+| `VAR_CMS_SITE_HEADER` | `site_header` | `"VAR CMS"` |
+| `VAR_CMS_SITE_SUB` | `site_sub` | `"CONTROL PANEL"` |
+| `VAR_CMS_SITE_URL` | `site_url` | `"/"` |
+| `VAR_CMS_LOGO_URL` | `logo_url` | `"/static/var_cms/var.png"` |
+| `VAR_CMS_LOGO_SVG` | `logo_svg` | `None` |
+| `VAR_CMS_ACCENT_COLOR` | `accent_color` | `None` |
+| `VAR_CMS_ENABLE_OTP` | `enable_otp` | `False` |
+| `VAR_CMS_DASHBOARD_TITLE` | `dashboard_title` | `"Command Hub"` |
+| `VAR_CMS_DASHBOARD_TEXT` | `dashboard_text` | *(see above)* |
+| `VAR_CMS_DEVELOPER_NAME` | `developer_name` | `"Rahul Baberwal"` |
+| `VAR_CMS_DEVELOPER_WEBSITE` | `developer_website` | `"https://rahulbaberwal.com"` |
+| `VAR_CMS_DEVELOPER_GITHUB` | `developer_github` | `"https://github.com/rahul-baberwal"` |
+| `VAR_CMS_DEVELOPER_LINKEDIN` | `developer_linkedin` | `"https://linkedin.com/in/rahul-baberwal"` |
+| `VAR_CMS_DEVELOPER_EMAIL` | `developer_email` | `"im@rahulbaberwal.com"` |
+| `VAR_CMS_DEVELOPER_IMAGE` | `developer_image` | `"https://github.com/rahul-baberwal.png"` |
+| `VAR_CMS_USERNAME_FIELD` | `username_field` | `None` |
+| `VAR_CMS_HIDDEN_DASHBOARD_CARDS` | `hidden_dashboard_cards` | `[]` |
+| `VAR_CMS_SHOWN_DASHBOARD_CARDS` | `shown_dashboard_cards` | `[]` |

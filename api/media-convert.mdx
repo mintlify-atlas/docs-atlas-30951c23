@@ -1,0 +1,184 @@
+---
+title: "POST /var-cms/api/media/convert/ — Convert Media File Formats"
+sidebarTitle: "Media Convert"
+description: "POST /var-cms/api/media/convert/ converts images, audio, and video files to different formats. Images use Pillow; audio and video require ffmpeg; PDF to images requires pdf2image."
+---
+
+The convert endpoint transforms a media file from one format to another and saves the result as a new file under `MEDIA_ROOT/converted/`. The source file is never modified. Supported media categories include images (via Pillow), audio and video (via ffmpeg), and PDF-to-image extraction (via pdf2image + Poppler). Each category requires its own dependency to be available in the environment.
+
+## Endpoint
+
+```
+POST /var-cms/api/media/convert/
+```
+
+## Authentication
+
+**Login required.** Requests must carry a valid authenticated Django session. The endpoint is protected by Django's `login_required` decorator.
+
+---
+
+## Supported Conversions
+
+| Media Type | Source Formats | Target Formats | Dependency |
+| ---------- | -------------- | -------------- | ---------- |
+| **Image** | `jpeg`, `jpg`, `png`, `webp`, `bmp`, `tiff`, `gif` | `jpeg`, `jpg`, `png`, `webp`, `bmp`, `tiff`, `gif` | Pillow |
+| **Audio** | `mp3`, `wav`, `ogg`, `flac`, `aac`, `m4a` | `mp3`, `wav`, `ogg`, `flac`, `aac`, `m4a` | ffmpeg |
+| **Video** | `mp4`, `webm`, `avi`, `mov`, `mkv` | `mp4`, `webm`, `avi`, `mov`, `mkv` | ffmpeg |
+| **PDF → Images** | `pdf` | `png`, `jpg`, `jpeg` | pdf2image + Poppler |
+
+<Note>
+  Audio and video conversion uses ffmpeg via `subprocess`. The ffmpeg binary must be accessible on the system `PATH` of the process running Django. PDF conversion uses pdf2image (which wraps Poppler's `pdftoppm`). These are optional — the endpoint returns a clear `install_hint` in the error body if a required tool is missing.
+</Note>
+
+---
+
+## Request Parameters
+
+Send parameters as `application/x-www-form-urlencoded` (standard HTML form POST body).
+
+<ParamField body="file_path" type="string" required>
+  Relative media path of the source file inside `MEDIA_ROOT`. Do not include the `MEDIA_URL` prefix.
+
+  **Example:** `var_cms/images/2024/01/photo.png`
+</ParamField>
+
+<ParamField body="target_fmt" type="string" required>
+  Desired output file extension (without the leading dot), lower-cased. The endpoint uses this to determine both the conversion pathway and the output filename.
+
+  **Examples:** `webp`, `mp3`, `mp4`, `png`
+</ParamField>
+
+---
+
+## Response
+
+### Image success — `200 OK`
+
+<ResponseField name="url" type="string">
+  Absolute media URL of the converted file. **Example:** `/media/converted/7b3c9a12ef56.webp`
+</ResponseField>
+
+<ResponseField name="path" type="string">
+  Relative storage path of the output file within `MEDIA_ROOT`. **Example:** `converted/7b3c9a12ef56.webp`
+</ResponseField>
+
+<ResponseField name="type" type="string">
+  Always `"image"` for image conversions.
+</ResponseField>
+
+### Audio / Video success — `200 OK`
+
+<ResponseField name="url" type="string">
+  Absolute media URL of the converted file.
+</ResponseField>
+
+<ResponseField name="path" type="string">
+  Relative storage path of the output file within `MEDIA_ROOT`.
+</ResponseField>
+
+<ResponseField name="type" type="string">
+  `"audio"` when the target format is an audio format; `"video"` when it is a video format.
+</ResponseField>
+
+### PDF success — `200 OK`
+
+<ResponseField name="type" type="string">
+  Always `"pdf_pages"` for PDF-to-image conversions.
+</ResponseField>
+
+<ResponseField name="pages" type="array">
+  Ordered array of media URLs, one per extracted page. Each page is saved as a separate PNG file under `MEDIA_ROOT/converted/`.
+</ResponseField>
+
+<ResponseField name="count" type="number">
+  Total number of pages extracted from the PDF.
+</ResponseField>
+
+### Error Responses
+
+<ResponseField name="error" type="string">
+  Human-readable error message. Returned alongside an optional `install_hint` field for dependency errors.
+
+  | Status | `error` value | `install_hint` | Cause |
+  | ------ | ------------- | -------------- | ----- |
+  | `400` | `"file_path and target_fmt required"` | — | One or both required POST parameters were missing. |
+  | `400` | `"Unsupported conversion: X → Y"` | — | The source/target format combination is not handled by any converter. |
+  | `404` | `"File not found"` | — | The resolved path does not exist inside `MEDIA_ROOT`. |
+  | `500` | `"Pillow not installed"` | — | Pillow is missing; required for image conversions. |
+  | `500` | `"ffmpeg not found. Install with: sudo apt install ffmpeg"` | `"sudo apt install ffmpeg"` | The `ffmpeg` binary is not on the system `PATH`. |
+  | `500` | `"pdf2image not installed. Run: uv add pdf2image"` | `"uv add pdf2image"` | The pdf2image package is missing; required for PDF conversions. |
+</ResponseField>
+
+---
+
+## Requirements & Optional Extras
+
+Pillow is a **required** core dependency and must always be present. Audio/video conversion and PDF extraction are opt-in:
+
+```bash
+# Core: install Pillow (always required)
+pip install django-var-cms pillow
+
+# PDF page extraction (adds pdf2image):
+pip install django-var-cms[pdf]
+# or:
+uv add pdf2image
+
+# Audio / video conversion via system ffmpeg:
+sudo apt install ffmpeg          # Debian / Ubuntu
+brew install ffmpeg              # macOS
+```
+
+<Warning>
+  ffmpeg is **not** a Python package — it must be installed as a system binary. The endpoint checks for its presence by running `which ffmpeg` and returns HTTP 500 with `install_hint` if it is absent.
+</Warning>
+
+---
+
+## Example
+
+### Request
+
+```bash
+curl -X POST http://localhost:8000/var-cms/api/media/convert/ \
+  -H "Cookie: sessionid=<your-session>" \
+  -d "file_path=var_cms/images/2024/01/photo.png&target_fmt=webp"
+```
+
+### Response
+
+```json
+{
+  "url": "/media/converted/7b3c9a12ef56.webp",
+  "path": "converted/7b3c9a12ef56.webp",
+  "type": "image"
+}
+```
+
+### PDF Example Response
+
+```json
+{
+  "type": "pdf_pages",
+  "pages": [
+    "/media/converted/a1b2c3d4e5f6.png",
+    "/media/converted/b2c3d4e5f6a7.png",
+    "/media/converted/c3d4e5f6a7b8.png"
+  ],
+  "count": 3
+}
+```
+
+---
+
+## Conversion Details
+
+### Images
+Pillow opens the source file, converts to the target format, and saves at quality `90`. RGBA images are automatically converted to RGB when the target is JPEG.
+
+### Audio & Video
+ffmpeg is invoked via `subprocess` with a simple `-i <source> <output>` command and a 120-second timeout. The converted file is written to a temporary path, read into memory, then saved via Django's `default_storage`.
+
+### PDF
+pdf2image calls Poppler's `pdftoppm` at 150 DPI, producing one PIL `Image` object per page. Each page is saved as a PNG to `MEDIA_ROOT/converted/` and its URL is appended to the `pages` array.

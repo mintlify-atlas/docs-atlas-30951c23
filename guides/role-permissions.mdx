@@ -1,0 +1,270 @@
+---
+title: "Role-Based Permissions for Django CMS Models"
+sidebarTitle: "Role Permissions"
+description: "Configure per-role and per-user add, list, view, edit, and delete permissions on django-var-cms models using RolePermission and UserPermission classes."
+---
+
+django-var-cms ships with a declarative, layered permissions system. Each `VarCMSModelAdmin` class accepts a `permissions` list of `RolePermission` and `UserPermission` objects that control exactly which actions (add, list, view, edit, delete) a given user may perform on that model. Resolution runs in strict priority order: a matching `UserPermission` wins first, then a matching `RolePermission`, and if neither applies the request is **denied**. When `permissions` is left empty the system falls back to the legacy `allow_add` / `allow_edit` / `allow_delete` boolean flags.
+
+---
+
+## Permission Classes
+
+### RolePermission
+
+`RolePermission` maps a named role to a set of allowed actions. The `role` string is matched against the authenticated user in two ways:
+
+- `"superuser"` — matched when `request.user.is_superuser` is `True`
+- Any other string — matched against `request.user.groups` (Django group names)
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class RolePermission:
+    """
+    Map a role name (string) to a set of allowed actions.
+
+    The role name is matched against:
+      1. "superuser"          — request.user.is_superuser
+      2. Django group names   — request.user.groups
+      3. Custom role logic    — override VarCMSModelAdmin._get_user_role()
+    """
+    role: str
+    add: bool    = False
+    list: bool   = True
+    view: bool   = True
+    edit: bool   = False
+    delete: bool = False
+
+    def allows(self, action: str) -> bool:
+        return bool(getattr(self, action, False))
+```
+
+<Note>
+The defaults are conservative: `list` and `view` are `True`, while `add`, `edit`, and `delete` default to `False`. Always explicitly set every flag you care about to avoid relying on defaults as your permission matrix grows.
+</Note>
+
+**Field reference**
+
+| Field | Type | Default | Meaning |
+|-------|------|---------|---------|
+| `role` | `str` | — | Role name to match (`"superuser"` or a Django group name) |
+| `add` | `bool` | `False` | Create new records |
+| `list` | `bool` | `True` | View the paginated list |
+| `view` | `bool` | `True` | Open a record's detail page |
+| `edit` | `bool` | `False` | Modify an existing record |
+| `delete` | `bool` | `False` | Delete a record |
+
+---
+
+### UserPermission
+
+`UserPermission` grants per-user overrides. It is matched by the user's username (via `request.user.get_username()`) and **takes priority over every role permission** — a `UserPermission` match short-circuits all further checks immediately.
+
+```python
+@dataclass
+class UserPermission:
+    """
+    Per-user permission override (matched by username or user pk).
+    Takes priority over all role/group permissions.
+    """
+    username: str
+    add: bool    = False
+    list: bool   = True
+    view: bool   = True
+    edit: bool   = False
+    delete: bool = False
+
+    def allows(self, action: str) -> bool:
+        return bool(getattr(self, action, False))
+```
+
+`UserPermission` carries the same five boolean fields as `RolePermission`. Use it to elevate or restrict a single account regardless of which groups they belong to.
+
+---
+
+### GroupPermission
+
+`GroupPermission` is a direct alias of `RolePermission`:
+
+```python
+@dataclass
+class GroupPermission(RolePermission):
+    """Alias — identical to RolePermission, role matches a Django group name."""
+    pass
+```
+
+Use `GroupPermission` when you want to make it visually clear in code that the `role` string refers specifically to a Django auth group name, rather than the special `"superuser"` sentinel.
+
+---
+
+## Resolution Algorithm
+
+When `has_permission(request, action)` is called, it delegates to `resolve_permission()`:
+
+```python
+def resolve_permission(
+    permissions: List[Union[RolePermission, UserPermission]],
+    role: str,
+    action: str,
+    username: str = "",
+) -> bool:
+    """
+    Walk the permission list and return True if allowed.
+    UserPermission (matched by username) takes priority.
+    """
+    if action not in ACTIONS:
+        return False
+
+    # 1. User-level overrides first
+    for perm in permissions:
+        if isinstance(perm, UserPermission) and perm.username == username:
+            return perm.allows(action)
+
+    # 2. Role / group match
+    for perm in permissions:
+        if isinstance(perm, RolePermission) and perm.role == role:
+            return perm.allows(action)
+
+    # 3. Default deny
+    return False
+```
+
+The three-step process is:
+
+1. **UserPermission match** — scan for a `UserPermission` whose `username` equals the request user's username. If found, return its value immediately.
+2. **RolePermission match** — scan for a `RolePermission` whose `role` equals the resolved role string. If found, return its value.
+3. **Default deny** — if nothing matched, return `False`.
+
+<Warning>
+If you set `permissions = []` (an empty list) on your admin class, `resolve_permission` is never called. The system falls back to the legacy `allow_add`, `allow_edit`, and `allow_delete` boolean flags instead. If those are also left at their defaults (`True`), **all authenticated users** can add, edit, and delete. Always populate `permissions` for production models.
+</Warning>
+
+---
+
+### Role Resolution: `_get_user_role()`
+
+Before `resolve_permission` is called, the admin class resolves the user's effective role string via `_get_user_role()`:
+
+```python
+def _get_user_role(self, request) -> str:
+    """Return the best-matching role name for this user."""
+    if request.user.is_superuser:
+        return "superuser"
+    groups = list(request.user.groups.values_list("name", flat=True))
+    if self.permissions:
+        defined_roles = {p.role for p in self.permissions if hasattr(p, "role")}
+        for g in groups:
+            if g in defined_roles:
+                return g
+    return groups[0] if groups else "anonymous"
+```
+
+The lookup priority is:
+
+1. If `is_superuser` → role is `"superuser"`, unconditionally.
+2. If any of the user's groups match a role explicitly declared in `permissions` → that group name is used (first match wins).
+3. Otherwise → the first group the user belongs to, or `"anonymous"` if they have no groups.
+
+<Note>
+Override `_get_user_role()` in your `VarCMSModelAdmin` subclass to implement custom role logic — for example, roles stored in a user profile model rather than Django groups.
+</Note>
+
+---
+
+## Legacy Fallback
+
+When `permissions` is an empty list, `has_permission()` falls back to three simple boolean flags:
+
+```python
+# Legacy simple toggles (overridden by permissions[] if set)
+allow_add: bool = True
+allow_edit: bool = True
+allow_delete: bool = True
+```
+
+The legacy mapping treats `list` and `view` as always allowed. This mode is suitable for simple setups where any authenticated user should have full access, or for quick prototyping before a proper permission matrix is defined.
+
+---
+
+## Complete Example — ArticleAdmin
+
+The demo application's `ArticleAdmin` illustrates the full pattern: four `RolePermission` entries covering group-based access, plus one `UserPermission` that overrides delete for a specific user named `alice`.
+
+```python
+from var_cms.registry import var_cms_site, VarCMSModelAdmin
+from var_cms.permissions import RolePermission, UserPermission
+from .models import Article
+
+class ArticleAdmin(VarCMSModelAdmin):
+    list_display    = ["title", "category", "author", "status", "is_featured", "view_count", "created_at"]
+    list_filter     = ["status", "is_featured", "category"]
+    search_fields   = ["title", "body", "author"]
+    readonly_fields = ["created_at", "updated_at", "view_count"]
+    ordering        = ["-created_at"]
+    list_per_page   = 20
+    html_fields     = ["body"]  # Quill rich-text editor
+    icon            = "file-text"
+
+    permissions = [
+        RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+        RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("author",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+        # Per-user override — "alice" can delete even though she is in the viewer group
+        UserPermission("alice",     add=True,  list=True, view=True, edit=True,  delete=True),
+    ]
+
+    role_editable_fields = {
+        "superuser": "__all__",
+        "editor":    ["title", "slug", "body", "status", "category", "is_featured"],
+        "author":    ["title", "body", "status"],   # authors can't touch slug/category
+        "*":         [],  # all other roles: no edits
+    }
+
+var_cms_site.register(Article, ArticleAdmin)
+```
+
+---
+
+## Demo User Accounts
+
+The demo application seeds the following test accounts to exercise every permission tier:
+
+| Username | Password | Role / Group | Permissions |
+|----------|----------|--------------|-------------|
+| `admin`  | `admin`  | superuser    | Full unrestricted access |
+| `editor` | `editor` | editor       | Add + Edit (cannot delete) |
+| `author` | `author` | author       | Add + Edit limited fields (cannot delete) |
+| `viewer` | `viewer` | viewer       | List + View records only |
+| `alice`  | `alice`  | viewer       | viewer role + delete override via `UserPermission` |
+
+<Accordion title="How alice's delete permission is resolved">
+`alice` is a member of the `viewer` group. Without a `UserPermission`, her role would resolve to `"viewer"` and the `RolePermission("viewer", delete=False)` entry would deny delete. Because a `UserPermission("alice", delete=True)` entry appears in the `permissions` list, the resolver matches it in step 1 and returns `True` before even reaching the role check — giving `alice` delete access that her group alone would not grant.
+</Accordion>
+
+---
+
+## Putting It All Together
+
+<Tip>
+Think of the `permissions` list as a short-circuit chain. Place `UserPermission` entries for exceptional users first (by convention) so they are easy to spot, but remember that the resolver always scans `UserPermission` entries before role entries regardless of list order.
+</Tip>
+
+A minimal, production-ready permissions block for a content model with three roles looks like this:
+
+```python
+from var_cms.permissions import RolePermission, UserPermission
+
+permissions = [
+    # Roles — matched by Django group name or "superuser"
+    RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+    RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+    RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+    # Per-user override
+    UserPermission("alice",     add=True,  list=True, view=True, edit=True,  delete=True),
+]
+```
+
+Unauthenticated requests are rejected before the resolver is even reached — `has_permission()` returns `False` immediately when `request.user.is_authenticated` is `False`.

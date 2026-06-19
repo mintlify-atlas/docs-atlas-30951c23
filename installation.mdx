@@ -1,0 +1,167 @@
+---
+title: "Install django-var-cms in Your Django Project"
+sidebarTitle: "Installation"
+description: "Step-by-step guide to install django-var-cms with pip or uv, configure INSTALLED_APPS, set up URL routing, and serve static and media files."
+---
+
+Adding django-var-cms to an existing Django project takes only a few minutes. The library ships as a standard Django app — install the package, register it in `INSTALLED_APPS`, wire up the URLs, and run migrations. No database schema changes are needed beyond Django's own auth tables.
+
+<Steps>
+
+  <Step title="Install the package">
+    Install `django-var-cms` together with its required dependencies. Pillow is needed for image processing and WhiteNoise for serving static files in production.
+
+    <CodeGroup>
+
+    ```bash pip
+    pip install django-var-cms pillow whitenoise
+    ```
+
+    ```bash uv
+    uv add django-var-cms pillow whitenoise
+    ```
+
+    ```bash pip + Tailwind CSS
+    pip install django-var-cms[tailwind] pillow whitenoise
+    ```
+
+    ```bash uv + Tailwind CSS
+    uv add django-var-cms[tailwind] pillow whitenoise
+    ```
+
+    </CodeGroup>
+
+    <Tip>
+      The `[tailwind]` extra installs `django-tailwind-cli`, which lets you compile utility-first Tailwind styles for your own templates alongside the CMS. See the [Optional Dependencies](#optional-dependencies) section below for details on all available extras.
+    </Tip>
+  </Step>
+
+  <Step title="Configure settings.py">
+    Add `"var_cms"` to `INSTALLED_APPS` and set the required static/media and authentication settings:
+
+    ```python settings.py
+    INSTALLED_APPS = [
+        # Django standard apps
+        "django.contrib.admin",
+        "django.contrib.auth",
+        "django.contrib.contenttypes",
+        "django.contrib.sessions",
+        "django.contrib.messages",
+        "django.contrib.staticfiles",
+        # django-var-cms
+        "var_cms",
+        # your apps
+        "myapp",
+    ]
+
+    # Media settings — required for file upload and image crop/convert APIs
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = BASE_DIR / "media"
+
+    # Static files settings
+    STATIC_URL = "/static/"
+    STATICFILES_DIRS = [BASE_DIR / "static"]
+    STATIC_ROOT = BASE_DIR / "staticfiles"
+
+    # Authentication redirects — point Django's login machinery at the CMS
+    LOGIN_URL = "/var-cms/login/"
+    LOGIN_REDIRECT_URL = "/var-cms/"
+    ```
+
+    <Note>
+      `LOGIN_URL` and `LOGIN_REDIRECT_URL` are standard Django settings. Setting them to the CMS paths ensures that `@login_required` decorators used internally redirect unauthenticated users to the glassmorphic CMS login page rather than Django's default `/accounts/login/`.
+    </Note>
+
+    You can also customise the CMS branding directly in `settings.py` using the `VAR_CMS_*` prefix:
+
+    ```python settings.py
+    VAR_CMS_SITE_HEADER  = "MY BRAND"          # Header title
+    VAR_CMS_SITE_SUB     = "ADMIN PANEL"        # Subtitle
+    VAR_CMS_SITE_URL     = "/"                  # "View Site" link target
+    VAR_CMS_LOGO_URL     = "/static/logo.png"   # Custom brand logo
+    VAR_CMS_ACCENT_COLOR = "142, 72%, 45%"      # HSL accent color (emerald green)
+    VAR_CMS_ENABLE_OTP   = False                # Set True to enable email OTP 2FA
+    ```
+  </Step>
+
+  <Step title="Add URL routing">
+    Include `var_cms.urls` in your project's root `urls.py`. Use `namespace="var_cms"` — this is required for the internal `reverse()` calls to resolve correctly.
+
+    ```python urls.py
+    from django.urls import path, include
+    from django.conf import settings
+    from django.conf.urls.static import static
+
+    urlpatterns = [
+        # ... other paths
+        path("var-cms/", include("var_cms.urls", namespace="var_cms")),
+    ]
+
+    # Serve uploaded media files during local development
+    if settings.DEBUG:
+        urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    ```
+
+    <Note>
+      The `static(...)` helper only serves files in development (`DEBUG=True`). In production, configure your web server (nginx, Caddy, etc.) or a cloud storage backend to serve the `MEDIA_ROOT` directory instead.
+    </Note>
+  </Step>
+
+  <Step title="Run migrations">
+    django-var-cms does not add any custom database tables of its own, but it depends on Django's built-in `auth` and `sessions` apps. Run migrations to make sure all tables are in place:
+
+    ```bash
+    python manage.py migrate
+    ```
+
+    Then start the development server and navigate to the dashboard:
+
+    ```bash
+    python manage.py runserver
+    ```
+
+    Open [http://127.0.0.1:8000/var-cms/](http://127.0.0.1:8000/var-cms/) and log in with a Django superuser account. If you don't have one yet, create it first:
+
+    ```bash
+    python manage.py createsuperuser
+    ```
+  </Step>
+
+</Steps>
+
+## Optional Dependencies
+
+django-var-cms ships three optional extras declared in `pyproject.toml`. Install any combination of them depending on your project's needs:
+
+| Extra | Installs | When to use |
+|---|---|---|
+| `[tailwind]` | `django-tailwind-cli >= 2.0` | Compile Tailwind CSS utility styles for custom frontend templates. Run `python manage.py tailwind build` (production) or `python manage.py tailwind start` (dev with hot reload). |
+| `[geo]` | `django[gis] >= 5.0` | Register models that contain GeoDjango spatial fields (`PointField`, `PolygonField`, etc.). Requires PostGIS or SpatiaLite. |
+| `[pdf]` | `pdf2image >= 1.16` | Enable PDF thumbnail generation in the media conversion API. Requires `poppler-utils` to be installed at the OS level. |
+
+```bash
+# Install multiple extras at once
+pip install "django-var-cms[tailwind,geo,pdf]"
+```
+
+## Static Files in Production
+
+django-var-cms bundles its own CSS, JavaScript, and icon assets. In production, run `collectstatic` and serve the `STATIC_ROOT` directory through WhiteNoise or your web server:
+
+```bash
+python manage.py collectstatic
+```
+
+To enable WhiteNoise, add its middleware to `MIDDLEWARE` **immediately after** `SecurityMiddleware`:
+
+```python settings.py
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # ← add this line
+    # ... rest of middleware
+]
+```
+
+<Tip>
+  WhiteNoise is already a hard dependency of django-var-cms, so no extra install step is needed — just add the middleware entry.
+</Tip>

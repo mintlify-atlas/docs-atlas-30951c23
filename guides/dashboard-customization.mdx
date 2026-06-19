@@ -1,0 +1,152 @@
+---
+title: "Customize the Dashboard Cards and Navigation"
+sidebarTitle: "Dashboard"
+description: "Control which model cards appear on the django-var-cms dashboard using dashboard_card, VAR_CMS_HIDDEN_DASHBOARD_CARDS, and card_buttons for quick-action links."
+---
+
+The dashboard at `/var-cms/` is your team's command center. It displays a card for every registered model that is configured to appear, showing a live record count, quick-action buttons, and a link to the full list view. By default **all cards are hidden** — you opt each one in explicitly so the dashboard shows only what matters.
+
+---
+
+## Showing and Hiding Cards
+
+### Per-Model: `dashboard_card` Attribute
+
+Set `dashboard_card = True` on any `VarCMSModelAdmin` subclass to show that model's card on the dashboard. The default is `False`.
+
+```python
+# myapp/var_cms_admin.py
+from var_cms.registry import var_cms_site, VarCMSModelAdmin
+from .models import Invoice, Log
+
+class InvoiceAdmin(VarCMSModelAdmin):
+    dashboard_card = True   # shown on dashboard
+
+class LogAdmin(VarCMSModelAdmin):
+    dashboard_card = False  # hidden from dashboard (default)
+
+var_cms_site.register(Invoice, InvoiceAdmin)
+var_cms_site.register(Log, LogAdmin)
+```
+
+### Global: `settings.py` Overrides
+
+You can also control visibility globally from `settings.py` without touching each admin class.
+
+```python
+# settings.py
+
+# Hide specific model cards (by model name or "app_label.model_name")
+VAR_CMS_HIDDEN_DASHBOARD_CARDS = ["logentry", "demo.category"]
+
+# Show ONLY these cards — all others are hidden regardless of dashboard_card
+VAR_CMS_SHOWN_DASHBOARD_CARDS = ["invoice", "customer"]
+```
+
+<Note>
+  `VAR_CMS_SHOWN_DASHBOARD_CARDS` takes priority: when it is non-empty, only the listed models are shown and `dashboard_card = True` on other models is ignored. Use either `HIDDEN` or `SHOWN`, not both, to keep your intent clear.
+</Note>
+
+The precedence order for any given model card is:
+
+1. If `VAR_CMS_SHOWN_DASHBOARD_CARDS` is set, the card is shown only if the model is in that list.
+2. If `VAR_CMS_HIDDEN_DASHBOARD_CARDS` contains the model, the card is hidden.
+3. Otherwise, the card follows the `dashboard_card` attribute on the admin class.
+
+---
+
+## Dashboard Title and Welcome Text
+
+Two settings control the heading and welcome copy shown at the top of the dashboard:
+
+```python
+# settings.py
+VAR_CMS_DASHBOARD_TITLE = "Command Hub"            # default: "Command Hub"
+VAR_CMS_DASHBOARD_TEXT  = "Welcome back, {username}. Your central command is active."
+```
+
+The `{username}` placeholder in `VAR_CMS_DASHBOARD_TEXT` is replaced at render time with the current user's username.
+
+---
+
+## Custom Card Buttons (`card_buttons`)
+
+Each dashboard card renders action buttons at the bottom. If you do **not** define `card_buttons`, the library generates default buttons based on the user's permissions:
+
+| Default button | Shown when |
+|----------------|-----------|
+| **View List** | User has `list` permission |
+| **Add New** | User has `add` permission |
+
+To define your own buttons, set `card_buttons` to a list of dicts on the admin class. Each dict supports:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `label` | string | Button text |
+| `action` | string | Built-in: `"list"` (goes to list view) or `"add"` (goes to add form). If set, `url` is resolved automatically. |
+| `url` | string | Any custom relative or absolute URL (used when `action` is not set). |
+| `class` | string | CSS class: `"btn-primary"`, `"btn-ghost"`, `"btn-danger"`. |
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    icon = "file-text"
+    dashboard_card = True
+    card_buttons = [
+        {"label": "All Articles", "action": "list"},
+        {"label": "Write Draft",  "action": "add"},
+        {"label": "Style Guide",  "url": "/docs/style-guide/", "class": "btn-ghost"},
+    ]
+```
+
+<Tip>
+  When `action` is `"list"` or `"add"`, the button is only rendered if the current user has the corresponding permission. This means your `card_buttons` definition is automatically permission-aware with no extra code.
+</Tip>
+
+### Full Example: ArticleAdmin
+
+Below is the complete `ArticleAdmin` configuration from the demo app, which shows two card buttons and full role-based permissions:
+
+```python
+from var_cms.registry import var_cms_site, VarCMSModelAdmin
+from var_cms.permissions import RolePermission, UserPermission
+from .models import Article
+
+class ArticleAdmin(VarCMSModelAdmin):
+    list_display    = ["title", "category", "author", "status", "is_featured", "view_count", "created_at"]
+    list_filter     = ["status", "is_featured", "category"]
+    search_fields   = ["title", "body", "author"]
+    readonly_fields = ["created_at", "updated_at", "view_count"]
+    ordering        = ["-created_at"]
+    list_per_page   = 20
+    html_fields     = ["body"]
+    icon            = "file-text"
+
+    # Dashboard
+    dashboard_card = True
+    card_buttons = [
+        {"label": "All Articles", "action": "list"},
+        {"label": "Write Draft",  "action": "add"},
+    ]
+
+    permissions = [
+        RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+        RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("author",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+        UserPermission("alice",     add=True,  list=True, view=True, edit=True,  delete=True),
+    ]
+    role_editable_fields = {
+        "superuser": "__all__",
+        "editor":    ["title", "slug", "body", "status", "category", "is_featured"],
+        "author":    ["title", "body", "status"],
+        "*":         [],
+    }
+
+var_cms_site.register(Article, ArticleAdmin)
+```
+
+---
+
+## Sidebar Navigation
+
+The collapsible sidebar is **built automatically** from your registry — you do not configure it separately. For every registered model where the current user has `list` permission, an entry is added to the nav grouped by `app_label`. The sidebar state (expanded or collapsed) is persisted to `localStorage` so it survives page reloads.

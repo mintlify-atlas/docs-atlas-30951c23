@@ -1,0 +1,102 @@
+---
+title: "Tailwind CSS Integration with django-var-cms"
+sidebarTitle: "Tailwind CSS"
+description: "Install django-var-cms with the optional Tailwind CLI extra to compile utility-first CSS for custom dashboard layouts using python manage.py tailwind build."
+---
+
+The optional `[tailwind]` extra registers [`django-tailwind-cli`](https://django-tailwind-cli.readthedocs.io/) in your project, giving you a Tailwind CSS v3 toolchain driven entirely by a standalone CLI binary — no Node.js or npm required.
+
+## Installation
+
+Install `django-var-cms` with the `[tailwind]` extra alongside the required media and static-file dependencies:
+
+<CodeGroup>
+
+```bash pip
+pip install django-var-cms[tailwind] pillow whitenoise
+```
+
+```bash uv
+uv add django-var-cms[tailwind] pillow whitenoise
+```
+
+</CodeGroup>
+
+## What the extra provides
+
+Installing the `[tailwind]` extra pulls in `django-tailwind-cli>=2.0` as declared in `pyproject.toml`:
+
+```toml pyproject.toml
+[project.optional-dependencies]
+tailwind = ["django-tailwind-cli>=2.0"]
+```
+
+This adds two management commands to your project:
+
+| Command | Purpose |
+| :--- | :--- |
+| `python manage.py tailwind build` | Compile a minified production CSS bundle |
+| `python manage.py tailwind start` | Start the Tailwind dev server with hot reload |
+
+Run the build command before deploying to generate your final stylesheet:
+
+```bash
+python manage.py tailwind build
+```
+
+During local development, use `start` to get instant class-change feedback:
+
+```bash
+python manage.py tailwind start
+```
+
+## Important: the CMS UI does not use Tailwind
+
+<Note>
+  The CMS itself does **not** use Tailwind CSS for its own interface. Its
+  glassmorphic styles (navigation sidebar, forms, modals, media previews) are
+  self-contained and ship with the `var_cms` package. The `[tailwind]` extra is
+  purely for **your project's** custom frontend templates, landing pages, or
+  dashboard layouts — not for overriding CMS internals.
+</Note>
+
+## Mixing CMS pages with Tailwind-styled views
+
+<Tip>
+  You can freely mix CMS-registered admin views with Tailwind-styled public
+  frontend views in the same Django project. The two styling systems are
+  completely independent — CMS routes live under `/var-cms/` while your
+  Tailwind templates handle everything else.
+</Tip>
+
+A typical project structure looks like this:
+
+```
+myproject/
+├── var_cms_admin.py        # CMS registrations (glassmorphic UI)
+├── templates/
+│   ├── base.html           # Tailwind base layout for public frontend
+│   ├── home.html
+│   └── articles/
+│       └── detail.html
+└── static/
+    └── css/
+        └── output.css      # compiled by `tailwind build`
+```
+
+Your `INSTALLED_APPS` with both systems active:
+
+```python settings.py
+INSTALLED_APPS = [
+    # ...
+    "django_tailwind_cli",  # added automatically by the [tailwind] extra
+    "var_cms",
+    "myapp",
+]
+```
+
+## Further reading
+
+For full configuration options — including custom `TAILWIND_CLI_SRC_CSS`,
+output paths, and version pinning — refer to the official
+[django-tailwind-cli documentation](https://django-tailwind-cli.readthedocs.io/).

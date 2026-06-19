@@ -1,0 +1,350 @@
+---
+title: "django-var-cms Settings Reference (VAR_CMS_* Variables)"
+sidebarTitle: "Settings"
+description: "Complete reference for all VAR_CMS_* Django settings that configure the django-var-cms Control Panel, including branding, authentication, dashboard, and developer profile options."
+---
+
+All `django-var-cms` settings are **optional** Django settings prefixed with `VAR_CMS_`. They are read once during `VarCMSSite` initialization at Django startup. You can also set attributes directly on the `var_cms_site` singleton to override any of these values at import time (see [Programmatic Overrides](#programmatic-overrides) below).
+
+## Complete Settings Example
+
+The block below shows every available `VAR_CMS_*` setting alongside the required Django settings for media handling and authentication routing.
+
+```python
+# settings.py
+
+INSTALLED_APPS = [
+    # ... standard Django apps
+    "var_cms",
+    "myapp",
+]
+
+# ── Media handling ───────────────────────────────────────────────────────────
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+# ── Authentication routing ───────────────────────────────────────────────────
+LOGIN_URL = "/var-cms/login/"
+LOGIN_REDIRECT_URL = "/var-cms/"
+
+# ── Branding & Identity ──────────────────────────────────────────────────────
+VAR_CMS_SITE_HEADER = "VAR CMS"
+VAR_CMS_SITE_SUB = "CONTROL PANEL"
+VAR_CMS_SITE_URL = "/"
+VAR_CMS_LOGO_URL = "/static/var_cms/var.png"
+VAR_CMS_LOGO_SVG = None            # raw SVG string, or None to use image logo
+VAR_CMS_ACCENT_COLOR = "142, 72%, 45%"  # HSL: "H, S%, L%"
+
+# ── Authentication ───────────────────────────────────────────────────────────
+VAR_CMS_ENABLE_OTP = False
+VAR_CMS_USERNAME_FIELD = None      # defaults to User.USERNAME_FIELD
+
+# ── Dashboard ────────────────────────────────────────────────────────────────
+VAR_CMS_HIDDEN_DASHBOARD_CARDS = []   # e.g. ["logentry", "demo.category"]
+VAR_CMS_SHOWN_DASHBOARD_CARDS = []    # when non-empty, ONLY these models appear
+VAR_CMS_DASHBOARD_TITLE = "Command Hub"
+VAR_CMS_DASHBOARD_TEXT = (
+    "Welcome back, {username}. Your central command is active. "
+    "Seamlessly manage database models, publish rich dynamic content, "
+    "crop media assets, and orchestrate translation systems in real time."
+)
+
+# ── Developer Profile ────────────────────────────────────────────────────────
+VAR_CMS_DEVELOPER_NAME = "Rahul Baberwal"
+VAR_CMS_DEVELOPER_WEBSITE = "https://rahulbaberwal.com"
+VAR_CMS_DEVELOPER_GITHUB = "https://github.com/rahul-baberwal"
+VAR_CMS_DEVELOPER_LINKEDIN = "https://linkedin.com/in/rahul-baberwal"
+VAR_CMS_DEVELOPER_EMAIL = "im@rahulbaberwal.com"
+VAR_CMS_DEVELOPER_IMAGE = "https://github.com/rahul-baberwal.png"
+```
+
+---
+
+## Branding & Identity
+
+<ParamField path="VAR_CMS_SITE_HEADER" type="str" default="VAR CMS">
+  The brand title displayed in the sidebar header. Shown prominently at the top of the navigation panel.
+
+  ```python
+  VAR_CMS_SITE_HEADER = "My Company CMS"
+  ```
+</ParamField>
+
+<ParamField path="VAR_CMS_SITE_SUB" type="str" default="CONTROL PANEL">
+  The subtitle rendered directly below the site header in the sidebar. Typically a short descriptor such as `"ADMIN PANEL"` or `"CONTROL PANEL"`.
+
+  ```python
+  VAR_CMS_SITE_SUB = "ADMIN PANEL"
+  ```
+</ParamField>
+
+<ParamField path="VAR_CMS_SITE_URL" type="str" default="/">
+  The URL used for the **View Site** link in the sidebar. Set this to the public-facing root of your project so staff can navigate from the CMS to the live site.
+
+  ```python
+  VAR_CMS_SITE_URL = "https://example.com"
+  ```
+</ParamField>
+
+<ParamField path="VAR_CMS_LOGO_URL" type="str" default="/static/var_cms/var.png">
+  The URL of the logo image rendered in the sidebar header. Accepts any relative or absolute URL. Ignored when `VAR_CMS_LOGO_SVG` is also set.
+
+  ```python
+  VAR_CMS_LOGO_URL = "/static/myapp/logo.png"
+  ```
+</ParamField>
+
+<ParamField path="VAR_CMS_LOGO_SVG" type="Optional[str]" default="None">
+  A raw SVG string used as a vector logo in the sidebar. When provided, this takes precedence over `VAR_CMS_LOGO_URL`. Set to `None` to fall back to the raster image logo.
+
+  ```python
+  VAR_CMS_LOGO_SVG = '<svg viewBox="0 0 24 24" ...>...</svg>'
+  ```
+</ParamField>
+
+<ParamField path="VAR_CMS_ACCENT_COLOR" type="Optional[str]" default="None">
+  An HSL color string in `"H, S%, L%"` format applied as the theme accent color across buttons, highlights, and active states throughout the Control Panel.
+
+  The lightness component (`L%`) is automatically clamped between **45%** and **85%** to ensure readability in both light and dark contexts.
+
+  ```python
+  # Emerald green
+  VAR_CMS_ACCENT_COLOR = "142, 72%, 45%"
+
+  # Royal blue
+  VAR_CMS_ACCENT_COLOR = "220, 80%, 55%"
+
+  # Crimson red
+  VAR_CMS_ACCENT_COLOR = "0, 75%, 50%"
+  ```
+
+  <Tip>
+    Pass the three HSL components as a comma-separated string — **do not** wrap them in `hsl()`. The template layer constructs the full CSS value from this string.
+  </Tip>
+</ParamField>
+
+---
+
+## Authentication
+
+<ParamField path="VAR_CMS_ENABLE_OTP" type="bool" default="False">
+  When set to `True`, a successful username/password login redirects users to a 6-digit OTP verification screen before granting access to the dashboard. The OTP is sent to the user's registered email address via Django's `send_mail`.
+
+  ```python
+  VAR_CMS_ENABLE_OTP = True
+  ```
+
+  <Note>
+    If your SMTP settings are not configured, the OTP is printed directly to the terminal as `[VAR CMS OTP]: ######` so developers are never locked out during local development.
+  </Note>
+</ParamField>
+
+<ParamField path="VAR_CMS_USERNAME_FIELD" type="Optional[str]" default="None">
+  The name of the field on the User model used as the username identifier. When `None` (default), `django-var-cms` falls back to `User.USERNAME_FIELD` from the active authentication backend — usually `"username"` for Django's built-in `User` model.
+
+  Set this explicitly when using a custom user model whose login field differs from `USERNAME_FIELD`.
+
+  ```python
+  # Custom user model that authenticates by email
+  VAR_CMS_USERNAME_FIELD = "email"
+  ```
+</ParamField>
+
+---
+
+## Dashboard
+
+<ParamField path="VAR_CMS_HIDDEN_DASHBOARD_CARDS" type="List[str]" default="[]">
+  A list of model identifiers whose dashboard cards should be hidden. Each entry may be either:
+  - A bare `model_name` string (e.g. `"logentry"`)
+  - A `"app_label.model_name"` string (e.g. `"demo.category"`)
+
+  ```python
+  VAR_CMS_HIDDEN_DASHBOARD_CARDS = ["logentry", "demo.category"]
+  ```
+
+  <Note>
+    `VAR_CMS_SHOWN_DASHBOARD_CARDS` takes precedence. If a model appears in both lists, it is hidden.
+  </Note>
+</ParamField>
+
+<ParamField path="VAR_CMS_SHOWN_DASHBOARD_CARDS" type="List[str]" default="[]">
+  When non-empty, **only** the listed models are shown as dashboard cards. All other registered models are hidden from the dashboard regardless of their `dashboard_card` attribute.
+
+  Entries follow the same format as `VAR_CMS_HIDDEN_DASHBOARD_CARDS` — bare `model_name` or `"app_label.model_name"`.
+
+  ```python
+  # Show only invoices and customers on the dashboard
+  VAR_CMS_SHOWN_DASHBOARD_CARDS = ["invoice", "customer"]
+  ```
+</ParamField>
+
+<ParamField path="VAR_CMS_DASHBOARD_TITLE" type="str" default="Command Hub">
+  The heading text displayed at the top of the dashboard page.
+
+  ```python
+  VAR_CMS_DASHBOARD_TITLE = "Welcome to My CMS"
+  ```
+</ParamField>
+
+<ParamField path="VAR_CMS_DASHBOARD_TEXT" type="str" default='"Welcome back, {username}. Your central command is active. Seamlessly manage database models, publish rich dynamic content, crop media assets, and orchestrate translation systems in real time."'>
+  The body paragraph rendered below the dashboard title. Supports two format placeholders that are interpolated at render time:
+
+  | Placeholder | Replaced with |
+  | :--- | :--- |
+  | `{username}` | The current user's username string |
+  | `{user}` | Alias for `{username}` |
+
+  ```python
+  VAR_CMS_DASHBOARD_TEXT = (
+      "Hello, {username}! Manage your content and settings below."
+  )
+  ```
+</ParamField>
+
+---
+
+## Developer Profile
+
+These settings populate the **Help & Support** (`/var-cms/about/`) section of the Control Panel. They identify the developer or agency that built and maintains the CMS instance.
+
+<ParamField path="VAR_CMS_DEVELOPER_NAME" type="str" default="Rahul Baberwal">
+  The full name of the developer or agency shown in the Help section.
+
+  ```python
+  VAR_CMS_DEVELOPER_NAME = "Acme Dev Studio"
+  ```
+</ParamField>
+
+<ParamField path="VAR_CMS_DEVELOPER_WEBSITE" type="str" default="https://rahulbaberwal.com">
+  The developer's personal or company website URL.
+
+  ```python
+  VAR_CMS_DEVELOPER_WEBSITE = "https://acmedev.studio"
+  ```
+</ParamField>
+
+<ParamField path="VAR_CMS_DEVELOPER_GITHUB" type="str" default="https://github.com/rahul-baberwal">
+  URL of the developer's GitHub profile or the project repository.
+
+  ```python
+  VAR_CMS_DEVELOPER_GITHUB = "https://github.com/acme-dev"
+  ```
+</ParamField>
+
+<ParamField path="VAR_CMS_DEVELOPER_LINKEDIN" type="str" default="https://linkedin.com/in/rahul-baberwal">
+  URL of the developer's LinkedIn profile.
+
+  ```python
+  VAR_CMS_DEVELOPER_LINKEDIN = "https://linkedin.com/in/jane-doe"
+  ```
+</ParamField>
+
+<ParamField path="VAR_CMS_DEVELOPER_EMAIL" type="str" default="im@rahulbaberwal.com">
+  Contact email address for the developer or support team.
+
+  ```python
+  VAR_CMS_DEVELOPER_EMAIL = "support@acmedev.studio"
+  ```
+</ParamField>
+
+<ParamField path="VAR_CMS_DEVELOPER_IMAGE" type="str" default="https://github.com/rahul-baberwal.png">
+  URL of the developer's avatar image displayed alongside the profile in the Help section. Any publicly accessible image URL is valid.
+
+  ```python
+  VAR_CMS_DEVELOPER_IMAGE = "https://acmedev.studio/team/jane.jpg"
+  ```
+</ParamField>
+
+---
+
+## Programmatic Overrides
+
+You can set attributes directly on the `var_cms_site` singleton inside any `var_cms_admin.py` file. Because `var_cms_admin.py` files are auto-discovered **after** Django's settings module is loaded, attribute assignments here always take precedence over `settings.py` values.
+
+```python
+# myapp/var_cms_admin.py
+from var_cms.registry import var_cms_site
+
+var_cms_site.site_header = "My Company CMS"
+var_cms_site.accent_color = "220, 80%, 55%"  # Blue
+var_cms_site.enable_otp = True
+```
+
+<Note>
+  `settings.py` values are read once when `VarCMSSite()` is instantiated at Django startup. Attributes set directly on `var_cms_site` in `var_cms_admin.py` are applied afterwards and therefore take precedence over any `VAR_CMS_*` setting.
+</Note>
+
+The following table maps each `VAR_CMS_*` setting to its corresponding `var_cms_site` attribute:
+
+| `settings.py` key | `var_cms_site` attribute |
+| :--- | :--- |
+| `VAR_CMS_SITE_HEADER` | `var_cms_site.site_header` |
+| `VAR_CMS_SITE_SUB` | `var_cms_site.site_sub` |
+| `VAR_CMS_SITE_URL` | `var_cms_site.site_url` |
+| `VAR_CMS_LOGO_URL` | `var_cms_site.logo_url` |
+| `VAR_CMS_LOGO_SVG` | `var_cms_site.logo_svg` |
+| `VAR_CMS_ACCENT_COLOR` | `var_cms_site.accent_color` |
+| `VAR_CMS_ENABLE_OTP` | `var_cms_site.enable_otp` |
+| `VAR_CMS_USERNAME_FIELD` | `var_cms_site.username_field` |
+| `VAR_CMS_HIDDEN_DASHBOARD_CARDS` | `var_cms_site.hidden_dashboard_cards` |
+| `VAR_CMS_SHOWN_DASHBOARD_CARDS` | `var_cms_site.shown_dashboard_cards` |
+| `VAR_CMS_DASHBOARD_TITLE` | `var_cms_site.dashboard_title` |
+| `VAR_CMS_DASHBOARD_TEXT` | `var_cms_site.dashboard_text` |
+| `VAR_CMS_DEVELOPER_NAME` | `var_cms_site.developer_name` |
+| `VAR_CMS_DEVELOPER_WEBSITE` | `var_cms_site.developer_website` |
+| `VAR_CMS_DEVELOPER_GITHUB` | `var_cms_site.developer_github` |
+| `VAR_CMS_DEVELOPER_LINKEDIN` | `var_cms_site.developer_linkedin` |
+| `VAR_CMS_DEVELOPER_EMAIL` | `var_cms_site.developer_email` |
+| `VAR_CMS_DEVELOPER_IMAGE` | `var_cms_site.developer_image` |
+
+---
+
+## Required Django Settings
+
+The following standard Django settings are not `VAR_CMS_*` prefixed, but must be configured correctly for `django-var-cms` to function fully.
+
+<ParamField path="MEDIA_URL" type="str">
+  The URL prefix used to serve user-uploaded files (images, files, cropped assets). Must end with a slash.
+
+  ```python
+  MEDIA_URL = "/media/"
+  ```
+</ParamField>
+
+<ParamField path="MEDIA_ROOT" type="str">
+  The absolute filesystem path to the directory where uploaded files are stored. Django's image crop and media conversion features write output files here.
+
+  ```python
+  MEDIA_ROOT = BASE_DIR / "media"
+  ```
+
+  <Warning>
+    In production, configure your web server (nginx, Apache, or a CDN) to serve files from `MEDIA_ROOT` at the `MEDIA_URL` prefix. During local development, add `static()` to your `urls.py`:
+
+    ```python
+    from django.conf import settings
+    from django.conf.urls.static import static
+
+    urlpatterns = [
+        ...
+    ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    ```
+  </Warning>
+</ParamField>
+
+<ParamField path="LOGIN_URL" type="str">
+  The URL Django redirects unauthenticated users to when they attempt to access a `@login_required` view. Set this to the `django-var-cms` login page so users land on the custom glassmorphic login screen rather than Django's default.
+
+  ```python
+  LOGIN_URL = "/var-cms/login/"
+  ```
+</ParamField>
+
+<ParamField path="LOGIN_REDIRECT_URL" type="str">
+  The URL Django redirects users to after a successful login when no `next` parameter is present. Set to the `django-var-cms` dashboard root.
+
+  ```python
+  LOGIN_REDIRECT_URL = "/var-cms/"
+  ```
+</ParamField>

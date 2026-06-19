@@ -1,0 +1,277 @@
+---
+title: "Form Layouts, Widgets, and Field Customization in django-var-cms"
+sidebarTitle: "Form Layouts"
+description: "Configure 12-column grid widths, field row grouping, custom widgets, placeholders, help texts, and the Quill.js rich text editor in django-var-cms forms."
+---
+
+django-var-cms renders every add/edit form on a **12-column CSS grid**. You can control the width of each field, group fields into visual rows, enable a rich text editor, enforce regex patterns, swap in custom dropdown widgets, and inject arbitrary CSS classes, inline styles, placeholders, and help text — all from your `VarCMSModelAdmin` subclass without touching any template.
+
+---
+
+## 12-Column Grid — `form_field_widths`
+
+The form grid spans 12 columns and automatically stretches to fill the available screen width. Use `form_field_widths` to set a named width preset for any field.
+
+| Preset | Grid columns | Description |
+|---|---|---|
+| `"full"` | 12 | Full row width — default for `TextField` and `BooleanField` |
+| `"half"` | 6 | Half the row — default for most other field types |
+| `"one-third"` | 4 | One-third of the row |
+| `"two-thirds"` | 8 | Two-thirds of the row |
+| `"one-fourth"` | 3 | One-quarter of the row |
+| `"three-fourths"` | 9 | Three-quarters of the row |
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    form_field_widths = {
+        "title":    "two-thirds",   # 8 columns — wide title input
+        "status":   "one-third",    # 4 columns — sits beside title
+        "category": "half",         # 6 columns
+        "author":   "half",         # 6 columns — sits beside category
+    }
+```
+
+<Tip>
+  Width presets that add up to 12 columns will sit side-by-side on a single visual row (e.g., `"two-thirds"` + `"one-third"` = 8 + 4 = 12). Fields that don't sum to 12 wrap naturally.
+</Tip>
+
+---
+
+## Field Row Grouping — `form_field_rows`
+
+`form_field_rows` lets you declare groups of fields that should always appear on the same visual row. Fields within a group automatically share the available 12 columns equally — you don't need to calculate widths manually.
+
+- A row of **2 fields** → each field gets 6 columns (`"half"`)
+- A row of **3 fields** → each field gets 4 columns (`"one-third"`)
+- A row of **4 fields** → each field gets 3 columns (`"one-fourth"`)
+
+Fields listed in a row **override** any individual `form_field_widths` setting for those fields. Fields not listed in any row continue to use the default heuristic (full-width for textareas and checkboxes, half-width for everything else).
+
+```python
+class CustomerAdmin(VarCMSModelAdmin):
+    form_field_rows = [
+        ["first_name", "last_name"],               # 2 fields → each 6 columns
+        ["mobile", "email", "date_of_birth"],      # 3 fields → each 4 columns
+    ]
+```
+
+---
+
+## Rich Text Editor — `html_fields`
+
+Add any `TextField` name to `html_fields` to replace the plain `<textarea>` with a **Quill.js** rich text editor. The editor is fully embedded — no external CDN or additional configuration is required.
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    html_fields = ["body"]   # Quill.js editor on the body field
+```
+
+```python
+class PageAdmin(VarCMSModelAdmin):
+    html_fields = ["body"]   # works on any TextField
+```
+
+The raw HTML produced by Quill is stored directly in the database column, exactly as a regular `TextField` would store its value.
+
+---
+
+## Regex Validators — `regex_validators`
+
+`regex_validators` maps a field name to a `(pattern, message)` tuple. django-var-cms applies the validation **both** client-side (HTML5 `pattern` and `title` attributes on the input widget) **and** server-side (Django `RegexValidator` attached to the form field), ensuring consistent enforcement regardless of whether JavaScript is enabled.
+
+```python
+class CategoryAdmin(VarCMSModelAdmin):
+    regex_validators = {
+        "slug": (
+            r"^[a-z0-9-]+$",
+            "Slug must consist of lowercase letters, numbers, and hyphens only."
+        )
+    }
+```
+
+You can add validators for multiple fields in a single dict:
+
+```python
+class CustomerAdmin(VarCMSModelAdmin):
+    regex_validators = {
+        "phone":    (r"^\+?[0-9\s\-]{7,15}$",  "Enter a valid phone number."),
+        "postcode": (r"^[A-Z]{1,2}[0-9][A-Z0-9]? ?[0-9][A-Z]{2}$", "Enter a valid UK postcode."),
+    }
+```
+
+---
+
+## Custom Dropdown Widgets — `form_field_widgets`
+
+`form_field_widgets` maps a field name to a widget type string, giving you control over how `ForeignKey`, `CharField` with choices, and `ManyToManyField` fields are rendered in the form.
+
+| Widget type | Rendered as | Best for |
+|---|---|---|
+| `"select"` | Standard `<select>` dropdown | Default — no override needed |
+| `"select_search"` | Searchable dropdown with live filter input | `ForeignKey` fields with many options |
+| `"multiselect"` | Checkbox list (all choices visible) | `ManyToManyField` with a small option set |
+| `"multiselect_search"` | Checkbox list with a search/filter input above | `ManyToManyField` with a large option set |
+
+```python
+class OrderAdmin(VarCMSModelAdmin):
+    form_field_widgets = {
+        "status":   "select",              # plain dropdown (default behaviour)
+        "customer": "select_search",       # searchable dropdown for FK
+        "tags":     "multiselect_search",  # checkbox list with search for M2M
+    }
+```
+
+<Note>
+  `"multiselect"` and `"multiselect_search"` are designed for `ManyToManyField` relationships. Use `"select_search"` for `ForeignKey` fields instead.
+</Note>
+
+---
+
+## Widget CSS Classes — `form_widget_classes`
+
+`form_widget_classes` injects CSS class names directly onto the underlying `<input>`, `<select>`, or `<textarea>` HTML element (not the container div). Use this for custom component libraries or design tokens.
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    form_widget_classes = {
+        "title": "form-control-lg",   # injected onto <input>
+        "body":  "editor-full",       # injected onto <textarea>
+    }
+```
+
+---
+
+## Placeholders — `form_field_placeholders`
+
+`form_field_placeholders` sets the HTML `placeholder` attribute on each input widget, giving users contextual guidance before they type.
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    form_field_placeholders = {
+        "title":  "Enter article title...",
+        "author": "Full name of the author",
+        "slug":   "auto-generated-if-left-blank",
+    }
+```
+
+---
+
+## Help Text — `form_field_help_texts`
+
+`form_field_help_texts` overrides the help text shown beneath a field in the form. This takes precedence over any `help_text` defined on the model field itself.
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    form_field_help_texts = {
+        "body":  "Write the full article details using the Quill editor.",
+        "slug":  "URL-friendly identifier — leave blank to auto-generate from title.",
+        "tags":  "Comma-separated list of tags, e.g. python, django, web.",
+    }
+```
+
+---
+
+## Container Classes and Styles
+
+Two additional dicts apply to the **wrapper `<div>`** that surrounds each field (rather than the input element itself).
+
+### `form_field_classes`
+
+Injects CSS class names onto the field's container `<div>`:
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    form_field_classes = {
+        "rating": "highlight-field",
+    }
+```
+
+### `form_field_styles`
+
+Appends inline CSS style rules to the field's container `<div>`. These are merged with the grid-column span rule that the 12-column system injects:
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    form_field_styles = {
+        "rating": "border-left: 3px solid var(--accent); padding-left: 8px;",
+    }
+```
+
+---
+
+## Complete Example
+
+The example below combines all form layout features into a realistic `ArticleAdmin`:
+
+```python
+# myapp/var_cms_admin.py
+from var_cms.registry import var_cms_site, VarCMSModelAdmin
+from .models import Article
+
+
+class ArticleAdmin(VarCMSModelAdmin):
+
+    # ── List view ─────────────────────────────────────────────────────────────
+    list_display    = ["title", "category", "author", "status", "is_featured", "created_at"]
+    list_filter     = ["status", "is_featured", "category"]
+    search_fields   = ["title", "body", "author"]
+    ordering        = ["-created_at"]
+    list_per_page   = 20
+    readonly_fields = ["created_at", "updated_at", "view_count"]
+    icon            = "file-text"
+
+    # ── Rich text editor ──────────────────────────────────────────────────────
+    html_fields = ["body"]
+
+    # ── 12-column grid widths ─────────────────────────────────────────────────
+    form_field_widths = {
+        "title":    "two-thirds",   # 8 cols
+        "status":   "one-third",    # 4 cols  → title + status fill the row
+        "category": "half",         # 6 cols
+        "author":   "half",         # 6 cols  → category + author fill the row
+        "rating":   "one-fourth",   # 3 cols
+    }
+
+    # ── Row grouping (overrides form_field_widths for listed fields) ──────────
+    # Uncomment to use row grouping instead of manual widths:
+    # form_field_rows = [
+    #     ["title", "status"],
+    #     ["category", "author"],
+    # ]
+
+    # ── Regex validation ──────────────────────────────────────────────────────
+    regex_validators = {
+        "slug": (r"^[a-z0-9-]+$", "Slug must use lowercase letters, numbers, and hyphens only.")
+    }
+
+    # ── Custom widget types ───────────────────────────────────────────────────
+    form_field_widgets = {
+        "category": "select_search",   # searchable FK dropdown
+    }
+
+    # ── Widget-level CSS classes ──────────────────────────────────────────────
+    form_widget_classes = {
+        "title": "form-control-lg",
+    }
+
+    # ── Placeholders ──────────────────────────────────────────────────────────
+    form_field_placeholders = {
+        "title":  "Enter article title...",
+        "author": "Full name",
+        "slug":   "auto-generated-if-left-blank",
+    }
+
+    # ── Help texts ────────────────────────────────────────────────────────────
+    form_field_help_texts = {
+        "body":   "Write the full article using the Quill rich text editor.",
+        "rating": "Decimal value between 0.0 and 9.9.",
+    }
+
+    # ── Container styles ──────────────────────────────────────────────────────
+    form_field_styles = {
+        "rating": "border-left: 3px solid var(--accent); padding-left: 8px;",
+    }
+
+
+var_cms_site.register(Article, ArticleAdmin)
+```

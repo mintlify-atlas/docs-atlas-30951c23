@@ -1,0 +1,152 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "django-var-cms",
+  "projectDescription": "A modern, highly customizable administrative Control Panel and CMS registry for Django projects, featuring glassmorphic UI, role-based permissions, rich media processing, and auto-discovered model registration.",
+  "theme": "luma",
+  "primaryColor": "#2d8a5e",
+  "lightColor": "#3aad76",
+  "darkColor": "#1a5c3f",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Model Registration",
+            "pages": [
+              "guides/registering-models",
+              "guides/list-display-and-filtering",
+              "guides/form-layouts",
+              "guides/custom-actions"
+            ]
+          },
+          {
+            "group": "Permissions",
+            "pages": [
+              "guides/role-permissions",
+              "guides/field-level-access"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "guides/authentication",
+              "guides/media-handling",
+              "guides/dashboard-customization",
+              "guides/branding"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "guides/tailwind-css",
+              "guides/demo-app"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Classes",
+            "pages": [
+              "api/var-cms-model-admin",
+              "api/var-cms-site",
+              "api/permissions"
+            ]
+          },
+          {
+            "group": "Media API",
+            "pages": [
+              "api/media-crop",
+              "api/media-convert"
+            ]
+          },
+          {
+            "group": "Template Tags",
+            "pages": [
+              "api/template-tags"
+            ]
+          },
+          {
+            "group": "Settings Reference",
+            "pages": [
+              "api/settings"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Auto-discovery of var_cms_admin.py in every installed Django app",
+    "Glassmorphic dark-mode UI with collapsible sidebar and HSL accent color customization",
+    "Role-based and per-user fine-grained permissions (add, list, view, edit, delete)",
+    "Field-level edit control per role via role_editable_fields",
+    "Integrated Quill.js rich text (HTML) editor via html_fields",
+    "Regex field validation (client-side + server-side) via regex_validators",
+    "Built-in image cropper with rotate, flip, and custom aspect ratio",
+    "Media format conversion: images (JPEG/PNG/WebP), audio (MP3/WAV), video (MP4/WebM)",
+    "Modal-based media previews for images, video, audio, and PDFs",
+    "Custom object actions on list and detail views",
+    "12-column grid form layout system with width presets and field row grouping",
+    "Custom dropdown widgets: select_search, multiselect, multiselect_search",
+    "Optional email OTP two-factor authentication",
+    "Forgot password and in-dashboard password reset flows",
+    "Dashboard card visibility and custom card buttons",
+    "Optional Tailwind CSS CLI integration"
+  ],
+  "publicApiSurface": [
+    "VarCMSModelAdmin",
+    "VarCMSSite",
+    "var_cms_site (global singleton)",
+    "var_cms_site.register(model, admin_class)",
+    "var_cms_site.unregister(model)",
+    "RolePermission(role, add, list, view, edit, delete)",
+    "GroupPermission(role, add, list, view, edit, delete)",
+    "UserPermission(username, add, list, view, edit, delete)",
+    "resolve_permission(permissions, role, action, username)",
+    "resolve_editable_fields(role_editable_fields, role)",
+    "handle_crop(request) — POST /var-cms/api/media/crop/",
+    "handle_convert(request) — POST /var-cms/api/media/convert/",
+    "Template tags: var_cms_list_url, var_cms_add_url, var_cms_edit_url, var_cms_delete_url, var_cms_view_url, var_cms_action_url, var_cms_field_preview",
+    "VarCMSModelAdmin.list_display",
+    "VarCMSModelAdmin.list_filter",
+    "VarCMSModelAdmin.search_fields",
+    "VarCMSModelAdmin.ordering",
+    "VarCMSModelAdmin.list_per_page",
+    "VarCMSModelAdmin.readonly_fields",
+    "VarCMSModelAdmin.exclude_fields",
+    "VarCMSModelAdmin.html_fields",
+    "VarCMSModelAdmin.regex_validators",
+    "VarCMSModelAdmin.permissions",
+    "VarCMSModelAdmin.role_editable_fields",
+    "VarCMSModelAdmin.form_field_widths",
+    "VarCMSModelAdmin.form_field_rows",
+    "VarCMSModelAdmin.form_field_widgets",
+    "VarCMSModelAdmin.form_field_placeholders",
+    "VarCMSModelAdmin.form_field_help_texts",
+    "VarCMSModelAdmin.form_widget_classes",
+    "VarCMSModelAdmin.form_field_classes",
+    "VarCMSModelAdmin.form_field_styles",
+    "VarCMSModelAdmin.icon",
+    "VarCMSModelAdmin.dashboard_card",
+    "VarCMSModelAdmin.card_buttons",
+    "VarCMSModelAdmin.custom_object_actions",
+    "VarCMSModelAdmin.list_image_width / list_image_height",
+    "VarCMSModelAdmin.save_model(request, obj, form, change)",
+    "VarCMSModelAdmin.delete_model(request, obj)",
+    "VarCMSModelAdmin.get_queryset(request)",
+    "VarCMSModelAdmin.has_permission(request, action)",
+    "VarCMSModelAdmin.get_editable_fields(request)"
+  ]
+}

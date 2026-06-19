@@ -1,72 +1,102 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "django-var-cms",
+  "theme": "luma",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
-  },
-  "favicon": "/favicon.svg",
-  "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "primary": "#2d8a5e",
+    "light": "#3aad76",
+    "dark": "#1a5c3f"
   },
   "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
     "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
+      "type": "github",
+      "href": "https://github.com/rahul-baberwal/django-var-cms"
     }
-  },
-  "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
-    ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/rahul-baberwal/django-var-cms"
     }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Model Registration",
+            "pages": [
+              "guides/registering-models",
+              "guides/list-display-and-filtering",
+              "guides/form-layouts",
+              "guides/custom-actions"
+            ]
+          },
+          {
+            "group": "Permissions",
+            "pages": [
+              "guides/role-permissions",
+              "guides/field-level-access"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "guides/authentication",
+              "guides/media-handling",
+              "guides/dashboard-customization",
+              "guides/branding"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "guides/tailwind-css",
+              "guides/demo-app"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Classes",
+            "pages": [
+              "api/var-cms-model-admin",
+              "api/var-cms-site",
+              "api/permissions"
+            ]
+          },
+          {
+            "group": "Media API",
+            "pages": [
+              "api/media-crop",
+              "api/media-convert"
+            ]
+          },
+          {
+            "group": "Template Tags",
+            "pages": [
+              "api/template-tags"
+            ]
+          },
+          {
+            "group": "Settings Reference",
+            "pages": [
+              "api/settings"
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

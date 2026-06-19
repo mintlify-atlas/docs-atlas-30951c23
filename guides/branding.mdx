@@ -1,0 +1,173 @@
+---
+title: "Customize Branding, Colors, and Logo in django-var-cms"
+sidebarTitle: "Branding"
+description: "Set a custom site header, subtitle, logo URL, HSL accent color, and developer profile for your django-var-cms Control Panel via settings.py or var_cms_site attributes."
+---
+
+django-var-cms exposes every visual identity setting through a pair of complementary mechanisms: **`VAR_CMS_*` keys in `settings.py`** (read once at startup) and **direct attributes on the `var_cms_site` singleton** (set in any auto-discovered `var_cms_admin.py`). Both approaches reach the same result — use whichever fits your project structure.
+
+---
+
+## Configuration via `settings.py`
+
+All branding settings live under the `VAR_CMS_` namespace. None are required; each has a sensible default.
+
+```python
+# settings.py
+
+VAR_CMS_SITE_HEADER  = "VAR CMS"                    # Panel title in header & login page
+VAR_CMS_SITE_SUB     = "ADMIN PANEL"                # Subtitle shown beneath the header
+VAR_CMS_SITE_URL     = "/"                          # "View Site" link target
+VAR_CMS_LOGO_URL     = "/static/var_cms/var.png"    # URL of the logo image
+VAR_CMS_ACCENT_COLOR = "142, 72%, 45%"              # HSL accent color (Emerald green)
+VAR_CMS_ENABLE_OTP   = False                        # Enable email OTP 2FA (see Authentication guide)
+```
+
+---
+
+## Configuration via `var_cms_site`
+
+Setting attributes directly on `var_cms_site` inside a `var_cms_admin.py` file overrides whatever was read from `settings.py`. This is useful when you want to keep branding logic close to the app that owns it, or when you need to compute values at startup (e.g. reading from the database or environment variables).
+
+```python
+# myapp/var_cms_admin.py
+from var_cms.registry import var_cms_site
+
+var_cms_site.site_header  = "My CMS"
+var_cms_site.site_sub     = "CONTROL PANEL"
+var_cms_site.site_url     = "https://example.com"
+var_cms_site.logo_url     = "/static/myapp/logo.png"
+var_cms_site.accent_color = "220, 80%, 55%"  # Blue
+```
+
+<Note>
+  `settings.py` values are read during `VarCMSSite.__init__()` when Django starts. Assignments made to `var_cms_site` in `var_cms_admin.py` files run during app discovery — slightly later — so they **always override** the `settings.py` values.
+</Note>
+
+---
+
+## HSL Accent Color
+
+The accent color drives buttons, active states, hover highlights, and other interactive elements throughout the panel. It is specified in **HSL format** as a string of three comma-separated values:
+
+```
+"<hue>, <saturation>%, <lightness>%"
+```
+
+```python
+# Examples
+VAR_CMS_ACCENT_COLOR = "142, 72%, 45%"   # Emerald green (default)
+VAR_CMS_ACCENT_COLOR = "220, 80%, 55%"   # Blue
+VAR_CMS_ACCENT_COLOR = "270, 60%, 50%"   # Purple
+VAR_CMS_ACCENT_COLOR = "0, 72%, 50%"     # Red
+```
+
+<Tip>
+  The library **clamps the lightness value** to the range `45–85%` automatically. Values below 45 % (too dark to read on dark backgrounds) are raised to 45 %, and values above 85 % (too washed-out) are capped at 85 %. You never need to worry about accidentally choosing an inaccessible color.
+</Tip>
+
+You can also set the accent color on `var_cms_site` at runtime:
+
+```python
+var_cms_site.accent_color = "142, 72%, 45%"  # Emerald green
+```
+
+---
+
+## Vector Logo (SVG)
+
+For a crisp, resolution-independent logo, set `VAR_CMS_LOGO_SVG` to a raw SVG string instead of (or in addition to) a logo URL. When `logo_svg` is set it takes precedence over `logo_url` in the header.
+
+```python
+# settings.py
+VAR_CMS_LOGO_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="32" height="32">
+  <circle cx="24" cy="24" r="22" fill="#22c55e"/>
+  <text x="24" y="30" text-anchor="middle" font-size="20" fill="white" font-family="sans-serif">M</text>
+</svg>
+"""
+```
+
+Or programmatically:
+
+```python
+# myapp/var_cms_admin.py
+var_cms_site.logo_svg = open("static/myapp/logo.svg").read()
+```
+
+---
+
+## Developer Profile
+
+The **Help & About** section of the panel can display a developer or agency profile card. Configure it with `VAR_CMS_DEVELOPER_*` settings:
+
+```python
+# settings.py
+
+VAR_CMS_DEVELOPER_NAME     = "Your Name"
+VAR_CMS_DEVELOPER_WEBSITE  = "https://example.com"
+VAR_CMS_DEVELOPER_GITHUB   = "https://github.com/you"
+VAR_CMS_DEVELOPER_LINKEDIN = "https://linkedin.com/in/you"
+VAR_CMS_DEVELOPER_EMAIL    = "you@example.com"
+VAR_CMS_DEVELOPER_IMAGE    = "https://github.com/you.png"  # Avatar URL
+```
+
+Or on `var_cms_site`:
+
+```python
+# myapp/var_cms_admin.py
+var_cms_site.developer_name     = "Your Name"
+var_cms_site.developer_website  = "https://example.com"
+var_cms_site.developer_github   = "https://github.com/you"
+var_cms_site.developer_linkedin = "https://linkedin.com/in/you"
+var_cms_site.developer_email    = "you@example.com"
+var_cms_site.developer_image    = "https://github.com/you.png"
+```
+
+All fields are optional. Omitted fields are simply not shown in the profile card.
+
+---
+
+## Complete Reference
+
+### `settings.py` Keys
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `VAR_CMS_SITE_HEADER` | `"VAR CMS"` | Main title shown in the panel header and login page |
+| `VAR_CMS_SITE_SUB` | `"CONTROL PANEL"` | Subtitle displayed beneath the header |
+| `VAR_CMS_SITE_URL` | `"/"` | Target of the "View Site" link |
+| `VAR_CMS_LOGO_URL` | `"/static/var_cms/var.png"` | URL for the logo image |
+| `VAR_CMS_LOGO_SVG` | `None` | Raw SVG string for a vector logo (overrides `LOGO_URL`) |
+| `VAR_CMS_ACCENT_COLOR` | `None` (library default) | HSL accent color string, e.g. `"142, 72%, 45%"` |
+| `VAR_CMS_ENABLE_OTP` | `False` | Enable email OTP 2FA on login |
+| `VAR_CMS_DASHBOARD_TITLE` | `"Command Hub"` | Heading shown on the dashboard |
+| `VAR_CMS_DASHBOARD_TEXT` | *(welcome string)* | Welcome text; supports `{username}` placeholder |
+| `VAR_CMS_DEVELOPER_NAME` | `"Rahul Baberwal"` | Developer name in the Help section |
+| `VAR_CMS_DEVELOPER_WEBSITE` | `"https://rahulbaberwal.com"` | Developer website URL |
+| `VAR_CMS_DEVELOPER_GITHUB` | `"https://github.com/rahul-baberwal"` | GitHub profile URL |
+| `VAR_CMS_DEVELOPER_LINKEDIN` | `"https://linkedin.com/in/rahul-baberwal"` | LinkedIn profile URL |
+| `VAR_CMS_DEVELOPER_EMAIL` | `"im@rahulbaberwal.com"` | Contact email |
+| `VAR_CMS_DEVELOPER_IMAGE` | `"https://github.com/rahul-baberwal.png"` | Avatar image URL |
+
+### `var_cms_site` Attributes
+
+All settings above have a direct counterpart on the singleton. Strip `VAR_CMS_` and lower-case the name:
+
+```python
+var_cms_site.site_header       # ← VAR_CMS_SITE_HEADER
+var_cms_site.site_sub          # ← VAR_CMS_SITE_SUB
+var_cms_site.site_url          # ← VAR_CMS_SITE_URL
+var_cms_site.logo_url          # ← VAR_CMS_LOGO_URL
+var_cms_site.logo_svg          # ← VAR_CMS_LOGO_SVG
+var_cms_site.accent_color      # ← VAR_CMS_ACCENT_COLOR
+var_cms_site.enable_otp        # ← VAR_CMS_ENABLE_OTP
+var_cms_site.dashboard_title   # ← VAR_CMS_DASHBOARD_TITLE
+var_cms_site.dashboard_text    # ← VAR_CMS_DASHBOARD_TEXT
+var_cms_site.developer_name    # ← VAR_CMS_DEVELOPER_NAME
+var_cms_site.developer_website # ← VAR_CMS_DEVELOPER_WEBSITE
+var_cms_site.developer_github  # ← VAR_CMS_DEVELOPER_GITHUB
+var_cms_site.developer_linkedin# ← VAR_CMS_DEVELOPER_LINKEDIN
+var_cms_site.developer_email   # ← VAR_CMS_DEVELOPER_EMAIL
+var_cms_site.developer_image   # ← VAR_CMS_DEVELOPER_IMAGE
+```

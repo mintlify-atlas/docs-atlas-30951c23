@@ -1,0 +1,196 @@
+---
+title: "Media Previews, Image Cropping, and File Conversion"
+sidebarTitle: "Media Handling"
+description: "Use django-var-cms built-in image cropper, modal media previews for images, video, audio, PDFs, and the media conversion API to transform file formats."
+---
+
+django-var-cms provides three complementary media capabilities out of the box: **modal previews** for any file field in list and detail views, a **built-in image cropper** with rotate and flip support, and a **file conversion API** that can transform images, audio, video, and PDF files — all without leaving the control panel.
+
+---
+
+## Modal Previews
+
+No configuration is needed. When a model field is an `ImageField`, the list view renders a thumbnail and clicking it opens a full-size preview modal. When a field is a `FileField`, an icon link is rendered; clicking it opens the appropriate modal player based on the file extension.
+
+| File type | Extensions | Modal behaviour |
+|-----------|------------|-----------------|
+| Image | any image format | Full-size preview |
+| Video | `mp4`, `webm`, `mov` | Inline `<video>` player |
+| Audio | `mp3`, `wav`, `ogg` | Inline `<audio>` player |
+| PDF | `pdf` | Embedded PDF viewer |
+| Other files | any | Icon link, opens/downloads in new tab |
+
+You can control the thumbnail dimensions shown in the list view with two attributes on your `VarCMSModelAdmin`:
+
+```python
+class MediaAssetAdmin(VarCMSModelAdmin):
+    list_display = ["title", "image", "file"]
+
+    # Thumbnail size in list view (pixels); defaults are 38 × 38
+    list_image_width  = 80
+    list_image_height = 80
+```
+
+---
+
+## Image Cropper
+
+Every `ImageField` widget in add/edit forms includes a built-in cropper modal powered by Cropper.js on the frontend and **Pillow** on the backend. Users can:
+
+- Draw a custom crop box
+- Rotate the image by arbitrary degrees
+- Flip horizontally and/or vertically
+- Choose an output format (JPEG, PNG, or WebP)
+
+The cropped result is saved to `MEDIA_ROOT/crops/` and its URL is returned to the frontend to update the form field.
+
+### Crop API Endpoint
+
+```
+POST /var-cms/api/media/crop/
+```
+
+All parameters are sent as `multipart/form-data` (standard POST body).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `file_path` | string | ✅ | Relative media path of the source image (e.g. `var_cms/images/2024/06/photo.jpg`) |
+| `x` | float → int | ✅ | Left edge of the crop box in pixels |
+| `y` | float → int | ✅ | Top edge of the crop box in pixels |
+| `w` | float → int | ✅ | Width of the crop box in pixels |
+| `h` | float → int | ✅ | Height of the crop box in pixels |
+| `rotate` | float | ❌ | Rotation in degrees (default `0`) |
+| `scale_x` | float | ❌ | `-1` to flip horizontally, `1` for no flip (default `1`) |
+| `scale_y` | float | ❌ | `-1` to flip vertically, `1` for no flip (default `1`) |
+| `format` | string | ❌ | Output format: `jpeg`, `png`, or `webp` (defaults to source format) |
+
+**Success response** (`200 OK`):
+
+```json
+{
+  "url": "/media/crops/3a7f9c1b2d4e.jpg",
+  "path": "crops/3a7f9c1b2d4e.jpg",
+  "format": "JPEG",
+  "size": [800, 600]
+}
+```
+
+<Note>
+  The crop endpoint is protected by `login_required`. Unauthenticated requests are redirected to the login page. Cropped images are saved under `MEDIA_ROOT/crops/` and are given a UUID-based filename to avoid collisions.
+</Note>
+
+---
+
+## Media Conversion API
+
+The conversion endpoint can transform images between formats, convert audio and video files via **ffmpeg**, and rasterise PDF pages to images via **pdf2image**.
+
+```
+POST /var-cms/api/media/convert/
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `file_path` | string | ✅ | Relative media path of the source file |
+| `target_fmt` | string | ✅ | Desired output extension, e.g. `webp`, `mp3`, `mp4`, `png` |
+
+### Supported Conversions
+
+<Tabs>
+  <Tab title="Images (Pillow)">
+    Image-to-image conversion is handled entirely by Pillow — no external binaries required.
+
+    **Supported formats:** `jpeg` / `jpg`, `png`, `webp`, `bmp`, `tiff`, `gif`
+
+    Any combination of these formats can be converted to any other. RGBA images are automatically converted to RGB when the target is JPEG.
+
+    **Success response:**
+    ```json
+    {
+      "url": "/media/converted/8c3a1f920b44.webp",
+      "path": "converted/8c3a1f920b44.webp",
+      "type": "image"
+    }
+    ```
+  </Tab>
+  <Tab title="Audio & Video (ffmpeg)">
+    Audio and video conversions are delegated to **ffmpeg**, which must be installed on the server.
+
+    **Audio formats:** `mp3`, `wav`, `ogg`, `flac`, `aac`, `m4a`
+
+    **Video formats:** `mp4`, `webm`, `avi`, `mov`, `mkv`
+
+    Cross-type conversions (e.g. video → audio) are also supported by ffmpeg.
+
+    **Success response:**
+    ```json
+    {
+      "url": "/media/converted/2b9d4e7a3c81.mp3",
+      "path": "converted/2b9d4e7a3c81.mp3",
+      "type": "audio"
+    }
+    ```
+
+    If ffmpeg is not found on the system, the endpoint returns a `500` error with an install hint:
+    ```json
+    {
+      "error": "ffmpeg not found. Install with: sudo apt install ffmpeg",
+      "install_hint": "sudo apt install ffmpeg"
+    }
+    ```
+  </Tab>
+  <Tab title="PDF to Images (pdf2image)">
+    A PDF can be rasterised into one PNG image per page. This requires **pdf2image** and the **poppler** system library.
+
+    **Supported target formats:** `png`, `jpg`, `jpeg`
+
+    **Success response:**
+    ```json
+    {
+      "type": "pdf_pages",
+      "pages": [
+        "/media/converted/page_1.png",
+        "/media/converted/page_2.png"
+      ],
+      "count": 2
+    }
+    ```
+
+    If `pdf2image` is not installed, the endpoint returns a `500` error:
+    ```json
+    {
+      "error": "pdf2image not installed. Run: uv add pdf2image",
+      "install_hint": "uv add pdf2image"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+Converted files are saved to `MEDIA_ROOT/converted/` with UUID-based filenames.
+
+---
+
+## Requirements
+
+| Capability | Requirement | How to install |
+|------------|-------------|----------------|
+| Image previews & cropping | [Pillow](https://pillow.readthedocs.io/) | `pip install pillow` (included in standard install) |
+| Image format conversion | Pillow | Already required |
+| Audio / video conversion | ffmpeg binary | `sudo apt install ffmpeg` |
+| PDF to images | pdf2image + poppler | `pip install pdf2image` + `sudo apt install poppler-utils` |
+
+<Warning>
+  Pillow is a **hard requirement** for django-var-cms. Install it alongside the package:
+  ```
+  pip install django-var-cms pillow
+  ```
+  Without Pillow, the crop endpoint returns a `500` error and image thumbnails will not render.
+</Warning>
+
+<Tip>
+  For PDF support you can use the bundled extra:
+  ```
+  pip install django-var-cms[pdf]
+  ```
+  This installs `pdf2image` automatically. You still need `poppler-utils` as a system package (`sudo apt install poppler-utils` on Debian/Ubuntu).
+</Tip>

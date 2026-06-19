@@ -1,0 +1,249 @@
+---
+title: "Customize List Views, Filters, and Search in django-var-cms"
+sidebarTitle: "List & Filtering"
+description: "Configure list_display columns, list_filter sidebar widgets, search_fields full-text search, pagination, and column sorting in django-var-cms list views."
+---
+
+The list view is the primary browsing interface for any registered model. django-var-cms gives you fine-grained control over which columns appear, how sidebar filters are rendered, how full-text search queries are applied, and how rows are paginated and sorted — all through declarative class attributes on your `VarCMSModelAdmin` subclass.
+
+## `list_display` — Table Columns
+
+`list_display` is a list of field names (or double-underscore traversal paths) that appear as columns in the list view table. If you leave it empty, django-var-cms automatically uses the first six fields from `model._meta.get_fields()`.
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    list_display = ["title", "category", "author", "status", "is_featured", "view_count", "created_at"]
+```
+
+### Special field rendering
+
+The list view applies automatic display logic based on the underlying Django field type:
+
+<CardGroup cols={3}>
+  <Card title="ImageField" icon="image">
+    Rendered as a thumbnail `<img>` tag. Click the thumbnail to open a full modal preview. Thumbnail dimensions are controlled by `list_image_width` and `list_image_height`.
+  </Card>
+  <Card title="FileField" icon="paperclip">
+    Rendered as a clickable icon link. The icon changes based on file extension — `video` for MP4/WebM, `music` for MP3/WAV, `file-text` for PDF, and `paperclip` for all other types.
+  </Card>
+  <Card title="BooleanField" icon="check">
+    Rendered as a green check icon (`✓`) for `True` and a red X icon (`✗`) for `False`, using Lucide SVG icons.
+  </Card>
+</CardGroup>
+
+Long string values (over 80 characters) are automatically truncated with an ellipsis, and the full value is accessible via the HTML `title` tooltip attribute.
+
+You can also traverse related model fields using the double-underscore notation:
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    # Display the name of the related Category FK
+    list_display = ["title", "category__name", "author", "status"]
+```
+
+### `list_image_width` / `list_image_height`
+
+Control the pixel size of image thumbnails rendered in list columns. Defaults to `38 × 38` px.
+
+```python
+class MediaAssetAdmin(VarCMSModelAdmin):
+    list_display      = ["title", "asset_type", "image", "file", "tags", "created_at"]
+    list_image_width  = 60
+    list_image_height = 60
+```
+
+---
+
+## `list_filter` — Sidebar Filters
+
+`list_filter` is a list of field names for which django-var-cms will render a filter widget in the sidebar. The widget type is determined automatically by the `build_filter_widgets()` function in `registry.py` based on the field's type:
+
+| Field type | Widget rendered |
+|---|---|
+| `CharField` / `IntegerField` with `.choices` | `select` — dropdown of available choices |
+| `ForeignKey` / `OneToOneField` | `select` — dropdown of all related objects (up to 300) |
+| `BooleanField` | `boolean` — yes / no / any toggle buttons |
+| `DateField` / `DateTimeField` | `date_range` — from/to date pickers |
+| `IntegerField` / `FloatField` / `DecimalField` | `number_range` — min/max numeric inputs |
+| All other field types | `text` — a plain text input for substring matching |
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    list_filter = ["status", "is_featured", "category"]
+    #              ^^^^^^^^   ^^^^^^^^^^^   ^^^^^^^^
+    #              choices    BooleanField  ForeignKey
+    #              → select   → boolean     → select
+```
+
+Filter parameters are appended to the URL as query string values (e.g., `?status=published&is_featured=1`). Multiple filters stack together, narrowing the queryset cumulatively.
+
+---
+
+## `search_fields` — Full-Text Search
+
+`search_fields` lists the fields that are searched when the user types a query in the search bar. Each listed field is queried with a case-insensitive `__icontains` lookup, and results matching **any** field are returned (OR logic).
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    search_fields = ["title", "body", "author"]
+```
+
+With the configuration above, typing `"django"` would return any article where the title, body, or author contains the string "django" (case-insensitively). The search query is passed as the `q` query parameter in the URL.
+
+<Tip>
+  You can search across related model fields by using double-underscore traversal:
+
+  ```python
+  search_fields = ["title", "category__name"]
+  ```
+</Tip>
+
+---
+
+## `ordering` — Default Sort Order
+
+`ordering` sets the default queryset order when no column sort is active. Use a leading `-` for descending order, matching Django's standard `order_by()` syntax.
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    ordering = ["-created_at"]        # newest first
+
+class CategoryAdmin(VarCMSModelAdmin):
+    ordering = ["name"]               # alphabetical
+```
+
+---
+
+## `list_per_page` — Pagination
+
+`list_per_page` controls how many rows appear on each page of the list view. The default is `25`. The paginator is Django's built-in `Paginator`.
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    list_per_page = 20   # show 20 articles per page
+```
+
+---
+
+## `list_select_related` — Query Optimisation
+
+When `list_display` includes fields from related models (via FK traversal), enabling `list_select_related` adds a `select_related()` call to the queryset, eliminating N+1 database queries.
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    list_display         = ["title", "category__name", "author"]
+    list_select_related  = True   # JOIN category in a single query
+```
+
+---
+
+## Column Sorting
+
+Every column header in the list view is clickable. Clicking a header sorts the list by that field ascending; clicking again toggles to descending. The sort state is tracked with two URL query parameters:
+
+| Parameter | Description |
+|---|---|
+| `o` | The field name to sort by (must be in `list_display`) |
+| `ot` | Sort direction — `"asc"` (default) or `"desc"` |
+
+Example URL after clicking the `created_at` column header twice:
+
+```
+/var-cms/demo/article/?o=created_at&ot=desc
+```
+
+---
+
+## Complete Example
+
+The following `CategoryAdmin` and `ArticleAdmin` classes from the demo app illustrate every list-view option working together:
+
+<Tabs>
+  <Tab title="CategoryAdmin">
+    ```python
+    # demo/var_cms_admin.py
+    from var_cms.registry import var_cms_site, VarCMSModelAdmin
+    from .models import Category
+
+    class CategoryAdmin(VarCMSModelAdmin):
+        # Columns in the list table
+        list_display  = ["name", "slug", "is_active", "created_at"]
+        #                                ^^^^^^^^^^   ^^^^^^^^^^
+        #                                BooleanField → check/x icon
+        #                                             DateTimeField → plain string
+
+        # Sidebar filter widgets
+        list_filter   = ["is_active"]
+        #                ^^^^^^^^^^ BooleanField → yes / no / any toggle
+
+        # Search bar (OR across all listed fields)
+        search_fields = ["name", "slug", "description"]
+
+        # Default ordering: A → Z by name
+        ordering      = ["name"]
+
+        # Mark created_at as read-only (shown in form but not editable)
+        readonly_fields = ["created_at"]
+
+        icon           = "folder"
+        dashboard_card = True
+
+    var_cms_site.register(Category, CategoryAdmin)
+    ```
+  </Tab>
+  <Tab title="ArticleAdmin">
+    ```python
+    # demo/var_cms_admin.py
+    from var_cms.registry import var_cms_site, VarCMSModelAdmin
+    from .models import Article
+
+    class ArticleAdmin(VarCMSModelAdmin):
+        # Columns — includes BooleanField, PositiveIntegerField, FK, DateTimeField
+        list_display  = ["title", "category", "author", "status", "is_featured", "view_count", "created_at"]
+
+        # Sidebar filters — choices select, boolean toggle, FK select
+        list_filter   = ["status", "is_featured", "category"]
+
+        # Search across title, body content, and author name
+        search_fields = ["title", "body", "author"]
+
+        # Most-recent articles first
+        ordering      = ["-created_at"]
+
+        # Pagination: 20 rows per page (override default of 25)
+        list_per_page = 20
+
+        readonly_fields = ["created_at", "updated_at", "view_count"]
+        icon            = "file-text"
+        dashboard_card  = True
+
+    var_cms_site.register(Article, ArticleAdmin)
+    ```
+  </Tab>
+  <Tab title="MediaAssetAdmin">
+    ```python
+    # demo/var_cms_admin.py
+    from var_cms.registry import var_cms_site, VarCMSModelAdmin
+    from .models import MediaAsset
+
+    class MediaAssetAdmin(VarCMSModelAdmin):
+        # image  → thumbnail preview
+        # file   → icon link (video/music/pdf/paperclip by extension)
+        list_display  = ["title", "asset_type", "image", "file", "tags", "created_at"]
+
+        # asset_type has choices → rendered as a select dropdown filter
+        list_filter   = ["asset_type"]
+
+        search_fields = ["title", "alt_text", "tags", "description"]
+        readonly_fields = ["created_at"]
+        icon          = "image"
+        dashboard_card = True
+
+    var_cms_site.register(MediaAsset, MediaAssetAdmin)
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Sorting is only available for fields that are direct model fields — not for computed properties or double-underscore traversals. The list view checks that the `o` parameter is present in `list_display` before applying the order.
+</Note>

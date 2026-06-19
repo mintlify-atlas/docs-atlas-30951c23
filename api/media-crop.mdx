@@ -1,0 +1,157 @@
+---
+title: "POST /var-cms/api/media/crop/ — Crop and Transform Images"
+sidebarTitle: "Media Crop"
+description: "POST /var-cms/api/media/crop/ crops, rotates, and flips an existing image in MEDIA_ROOT. Returns the URL and path of the new cropped image saved under MEDIA_ROOT/crops/."
+---
+
+The crop endpoint accepts a media file path and crop coordinates, applies optional rotation and flip transforms, saves the result as a new file under `MEDIA_ROOT/crops/`, and returns a JSON response with the URL, path, format, and dimensions of the cropped image. The source image is never modified — a fresh file with a UUID-based name is always written.
+
+## Endpoint
+
+```
+POST /var-cms/api/media/crop/
+```
+
+## Authentication
+
+**Login required.** Requests must be made with a valid authenticated Django session. The endpoint is protected by Django's `login_required` decorator and rejects unauthenticated requests with a redirect to the login page.
+
+<Note>
+  This endpoint is called automatically by the built-in image cropper modal UI (powered by Cropper.js). You only need to call it directly if you are building a custom integration outside of the standard django-var-cms admin interface.
+</Note>
+
+---
+
+## Request Parameters
+
+Send parameters as `application/x-www-form-urlencoded` (standard HTML form POST body).
+
+<ParamField body="file_path" type="string" required>
+  Relative media path of the source image inside `MEDIA_ROOT`. Do not include the `MEDIA_URL` prefix.
+
+  **Example:** `var_cms/images/2024/01/photo.jpg`
+</ParamField>
+
+<ParamField body="x" type="number" required>
+  Left offset of the crop box in pixels, measured from the left edge of the (post-transform) image.
+</ParamField>
+
+<ParamField body="y" type="number" required>
+  Top offset of the crop box in pixels, measured from the top edge of the (post-transform) image.
+</ParamField>
+
+<ParamField body="w" type="number" required>
+  Width of the crop box in pixels. Must be greater than `0` for cropping to be applied.
+</ParamField>
+
+<ParamField body="h" type="number" required>
+  Height of the crop box in pixels. Must be greater than `0` for cropping to be applied.
+</ParamField>
+
+<ParamField body="rotate" type="number" default="0">
+  Rotation angle in degrees. Applied **before** the crop is taken. Positive values rotate clockwise; the image canvas expands to fit the rotated result (`expand=True`).
+</ParamField>
+
+<ParamField body="scale_x" type="number" default="1">
+  Horizontal flip control. Pass `-1` to mirror the image left-to-right, `1` for normal orientation.
+</ParamField>
+
+<ParamField body="scale_y" type="number" default="1">
+  Vertical flip control. Pass `-1` to mirror the image top-to-bottom, `1` for normal orientation.
+</ParamField>
+
+<ParamField body="format" type="string">
+  Output image format. Accepted values: `jpeg`, `png`, `webp`. When omitted, the format defaults to the same format as the source image. JPEG output automatically converts RGBA images to RGB.
+</ParamField>
+
+---
+
+## Response
+
+### Success — `200 OK`
+
+<ResponseField name="url" type="string">
+  Absolute media URL of the saved crop, served from `MEDIA_URL`. Use this to display or reference the image in your application.
+
+  **Example:** `/media/crops/a3f9b12c4d5e.webp`
+</ResponseField>
+
+<ResponseField name="path" type="string">
+  Relative storage path of the crop within `MEDIA_ROOT`, as returned by Django's `default_storage`.
+
+  **Example:** `crops/a3f9b12c4d5e.webp`
+</ResponseField>
+
+<ResponseField name="format" type="string">
+  Pillow format string of the saved output. One of `JPEG`, `PNG`, or `WEBP`.
+</ResponseField>
+
+<ResponseField name="size" type="array">
+  Two-element integer array `[width, height]` representing the pixel dimensions of the saved crop.
+
+  **Example:** `[400, 300]`
+</ResponseField>
+
+### Error Responses
+
+<ResponseField name="error" type="string">
+  Human-readable error message. Returned with one of the following HTTP status codes:
+
+  | Status | `error` value | Cause |
+  | ------ | ------------- | ----- |
+  | `400`  | `"file_path required"` | The `file_path` POST parameter was missing or empty. |
+  | `400`  | `"Invalid params: ..."` | One or more of `x`, `y`, `w`, `h`, `rotate`, `scale_x`, `scale_y` could not be parsed as a number. |
+  | `404`  | `"File not found"` | The resolved absolute path does not exist inside `MEDIA_ROOT`. |
+  | `500`  | `"Pillow not installed. Run: uv add pillow"` | The Pillow library is not available in the current Python environment. |
+</ResponseField>
+
+---
+
+## Requirements
+
+<Warning>
+  **Pillow is a required dependency.** The crop endpoint will return HTTP 500 if Pillow is not installed. Install it alongside the package:
+
+  ```bash
+  pip install django-var-cms pillow
+  # or with uv:
+  uv add django-var-cms pillow
+  ```
+</Warning>
+
+The source file must reside within `MEDIA_ROOT`. The endpoint sanitises `file_path` by stripping any leading slash and `MEDIA_URL` prefix before joining with `MEDIA_ROOT`, so passing the raw `MEDIA_URL`-prefixed URL is safe.
+
+---
+
+## Example
+
+### Request
+
+```bash
+curl -X POST http://localhost:8000/var-cms/api/media/crop/ \
+  -H "Cookie: sessionid=<your-session>" \
+  -d "file_path=var_cms/images/2024/01/photo.jpg&x=10&y=20&w=400&h=300&format=webp"
+```
+
+### Response
+
+```json
+{
+  "url": "/media/crops/a3f9b12c4d5e.webp",
+  "path": "crops/a3f9b12c4d5e.webp",
+  "format": "WEBP",
+  "size": [400, 300]
+}
+```
+
+---
+
+## Transform Order
+
+Transforms are applied in the following order before the crop box is extracted:
+
+1. **Flip** — `scale_x = -1` flips left-to-right; `scale_y = -1` flips top-to-bottom.
+2. **Rotate** — the image is rotated by `-rotate` degrees with canvas expansion enabled.
+3. **Crop** — the region `(x, y, x+w, y+h)` is extracted from the transformed image.
+
+This matches the coordinate system used by Cropper.js, which reports crop coordinates relative to the already-transformed canvas.

@@ -1,0 +1,363 @@
+---
+title: "RolePermission, UserPermission, and Permission Helpers"
+sidebarTitle: "Permissions"
+description: "API reference for RolePermission, GroupPermission, and UserPermission dataclasses plus the resolve_permission and resolve_editable_fields helper functions."
+---
+
+The `var_cms.permissions` module provides a lightweight, framework-independent set of dataclasses and pure-function helpers for role- and user-level access control. All permission evaluation in `VarCMSModelAdmin` goes through these primitives.
+
+```python
+from var_cms.permissions import RolePermission, GroupPermission, UserPermission
+from var_cms.permissions import resolve_permission, resolve_editable_fields
+```
+
+---
+
+## ACTIONS Constant
+
+```python
+ACTIONS = ("add", "list", "view", "edit", "delete")
+```
+
+The five actions recognised by the permissions system. Any string outside this tuple is automatically denied by `resolve_permission`.
+
+| Action | CMS view gated |
+|---|---|
+| `"add"` | Add / create form |
+| `"list"` | Paginated list view |
+| `"view"` | Read-only detail view |
+| `"edit"` | Edit form |
+| `"delete"` | Delete confirmation |
+
+---
+
+## RolePermission
+
+Maps a **role name** to a set of allowed actions.
+
+```python
+@dataclass
+class RolePermission:
+    role: str
+    add: bool    = False
+    list: bool   = True
+    view: bool   = True
+    edit: bool   = False
+    delete: bool = False
+```
+
+<ParamField path="role" type="str" required>
+  The role identifier. Matched against:
+
+  1. `"superuser"` — `request.user.is_superuser` is `True`.
+  2. Any Django **group name** the user belongs to (`request.user.groups`).
+  3. Custom role logic — override `VarCMSModelAdmin._get_user_role()` for non-group-based roles.
+</ParamField>
+
+<ParamField path="add" type="bool" default="False">
+  Permits creating new objects.
+</ParamField>
+
+<ParamField path="list" type="bool" default="True">
+  Permits viewing the paginated list.
+</ParamField>
+
+<ParamField path="view" type="bool" default="True">
+  Permits viewing the read-only detail page.
+</ParamField>
+
+<ParamField path="edit" type="bool" default="False">
+  Permits modifying existing objects.
+</ParamField>
+
+<ParamField path="delete" type="bool" default="False">
+  Permits deleting objects.
+</ParamField>
+
+### `allows(action: str) → bool`
+
+Returns the boolean value of the named action attribute.
+
+```python
+perm = RolePermission("editor", add=True, list=True, view=True, edit=True, delete=False)
+perm.allows("edit")    # True
+perm.allows("delete")  # False
+```
+
+### Role Matching Details
+
+```python
+def _get_user_role(self, request) -> str:
+    if request.user.is_superuser:
+        return "superuser"
+    groups = list(request.user.groups.values_list("name", flat=True))
+    # First group that appears in the permissions list wins
+    if self.permissions:
+        defined_roles = {p.role for p in self.permissions if hasattr(p, "role")}
+        for g in groups:
+            if g in defined_roles:
+                return g
+    return groups[0] if groups else "anonymous"
+```
+
+<Tip>
+  A user's **first matching group** (in the order returned by Django) is used as their role. If a user belongs to both `"editor"` and `"viewer"` and both are in your `permissions` list, the group that appears first in the database result wins. Keep group assignments unambiguous.
+</Tip>
+
+---
+
+## GroupPermission
+
+An alias for `RolePermission` that communicates intent — the `role` value explicitly refers to a Django auth group name.
+
+```python
+@dataclass
+class GroupPermission(RolePermission):
+    """Alias — identical to RolePermission, role matches a Django group name."""
+    pass
+```
+
+`GroupPermission` and `RolePermission` are interchangeable at runtime. Use whichever makes your intent clearer.
+
+```python
+from var_cms.permissions import GroupPermission
+
+permissions = [
+    GroupPermission("editors",    add=True, list=True, view=True, edit=True,  delete=False),
+    GroupPermission("moderators", add=False,list=True, view=True, edit=False, delete=False),
+]
+```
+
+---
+
+## UserPermission
+
+Per-user permission override. Takes **priority over all role and group permissions** when the authenticated user's username matches.
+
+```python
+@dataclass
+class UserPermission:
+    username: str
+    add: bool    = False
+    list: bool   = True
+    view: bool   = True
+    edit: bool   = False
+    delete: bool = False
+```
+
+<ParamField path="username" type="str" required>
+  The username to match against. Resolution uses `get_username()` or falls back to the model's `USERNAME_FIELD` attribute (configurable via `VAR_CMS_USERNAME_FIELD` / `var_cms_site.username_field`).
+</ParamField>
+
+<ParamField path="add" type="bool" default="False">
+  Permits creating new objects for this specific user.
+</ParamField>
+
+<ParamField path="list" type="bool" default="True">
+  Permits viewing the paginated list.
+</ParamField>
+
+<ParamField path="view" type="bool" default="True">
+  Permits the read-only detail page.
+</ParamField>
+
+<ParamField path="edit" type="bool" default="False">
+  Permits modifying existing objects.
+</ParamField>
+
+<ParamField path="delete" type="bool" default="False">
+  Permits deleting objects.
+</ParamField>
+
+### `allows(action: str) → bool`
+
+Returns the boolean value of the named action attribute — identical signature to `RolePermission.allows`.
+
+### Example: per-user override
+
+```python
+permissions = [
+    RolePermission("viewer", add=False, list=True, view=True, edit=False, delete=False),
+    # alice is technically a viewer, but gets full delete rights
+    UserPermission("alice",  add=True,  list=True, view=True, edit=True,  delete=True),
+]
+```
+
+<Warning>
+  `UserPermission` entries are checked **before** `RolePermission` entries. The first `UserPermission` whose `username` matches the requesting user short-circuits all further checks — no role rules are consulted for that user.
+</Warning>
+
+---
+
+## resolve_permission()
+
+```python
+def resolve_permission(
+    permissions: List[Union[RolePermission, UserPermission]],
+    role: str,
+    action: str,
+    username: str = "",
+) -> bool:
+```
+
+Walk the permissions list and return `True` if the action is allowed.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `permissions` | `List[RolePermission \| UserPermission]` | The `permissions` list from the model admin. |
+| `role` | `str` | The resolved role name for the current user (from `_get_user_role`). |
+| `action` | `str` | One of the values in `ACTIONS`. Any other value returns `False` immediately. |
+| `username` | `str` | The current user's username, used for `UserPermission` matching. Defaults to `""`. |
+
+**Resolution order:**
+
+1. **UserPermission match** — iterate the list; the first `UserPermission` whose `.username == username` wins and its `allows(action)` is returned immediately.
+2. **RolePermission match** — iterate the list; the first `RolePermission` whose `.role == role` wins and its `allows(action)` is returned.
+3. **Default deny** — if no match is found, `False` is returned.
+
+```python
+from var_cms.permissions import RolePermission, UserPermission, resolve_permission
+
+perms = [
+    RolePermission("superuser", add=True, list=True, view=True, edit=True, delete=True),
+    RolePermission("editor",    add=True, list=True, view=True, edit=True, delete=False),
+    UserPermission("alice",     add=True, list=True, view=True, edit=True, delete=True),
+]
+
+resolve_permission(perms, role="editor",    action="delete", username="bob")   # False
+resolve_permission(perms, role="editor",    action="delete", username="alice") # True  (UserPermission wins)
+resolve_permission(perms, role="superuser", action="delete", username="")      # True
+resolve_permission(perms, role="anonymous", action="list",   username="")      # False (no match → deny)
+```
+
+---
+
+## resolve_editable_fields()
+
+```python
+def resolve_editable_fields(
+    role_editable_fields: Dict[str, Union[List[str], str]],
+    role: str,
+) -> Union[List[str], str]:
+```
+
+Return the fields a given role may edit from the `role_editable_fields` mapping.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `role_editable_fields` | `Dict[str, List[str] \| str]` | The `role_editable_fields` dict from the model admin. |
+| `role` | `str` | The resolved role name for the current user. |
+
+**Resolution order:**
+
+1. If `role` is a key in `role_editable_fields`, return its value (a list or `"__all__"`).
+2. If `role == "superuser"` and no explicit entry exists, return `"__all__"` (superusers always get full edit access unless explicitly restricted).
+3. If the key `"*"` (wildcard) exists in `role_editable_fields`, return its value.
+4. Return `[]` — deny all edits for unrecognised roles.
+
+```python
+from var_cms.permissions import resolve_editable_fields
+
+fields = {
+    "superuser": "__all__",
+    "editor":    ["title", "body", "status"],
+    "author":    ["title", "body"],
+    "*":         [],
+}
+
+resolve_editable_fields(fields, "superuser")   # "__all__"
+resolve_editable_fields(fields, "editor")      # ["title", "body", "status"]
+resolve_editable_fields(fields, "author")      # ["title", "body"]
+resolve_editable_fields(fields, "viewer")      # []  (wildcard "*" → [])
+resolve_editable_fields(fields, "anonymous")   # []
+```
+
+<Note>
+  When `role_editable_fields` is an empty dict `{}` and `get_editable_fields()` falls through to `resolve_editable_fields`, the superuser fallback in step 2 still applies. Every other role receives `[]` in that case.
+</Note>
+
+---
+
+## permission_summary()
+
+```python
+def permission_summary(permissions: List[RolePermission]) -> List[Dict]:
+```
+
+Returns a serialisable list of dicts representing each permission entry. Useful for rendering permission tables in templates or returning them in an API response.
+
+**Returns:** A list of dicts, each containing `role`, `add`, `list`, `view`, `edit`, and `delete` keys.
+
+```python
+from var_cms.permissions import RolePermission, UserPermission, permission_summary
+
+perms = [
+    RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+    RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+    UserPermission("alice",     add=True,  list=True, view=True, edit=True,  delete=True),
+]
+
+permission_summary(perms)
+# [
+#   {"role": "superuser", "add": True,  "list": True, "view": True, "edit": True,  "delete": True},
+#   {"role": "editor",    "add": True,  "list": True, "view": True, "edit": True,  "delete": False},
+#   {"role": "alice",     "add": True,  "list": True, "view": True, "edit": True,  "delete": True},
+# ]
+```
+
+Both `RolePermission` and `UserPermission` instances are included in the output. The `role` key holds `.role` for `RolePermission` / `GroupPermission`, and `.username` for `UserPermission`.
+
+---
+
+## Complete Permissions Example
+
+```python
+# myapp/var_cms_admin.py
+from var_cms.registry import var_cms_site, VarCMSModelAdmin
+from var_cms.permissions import RolePermission, GroupPermission, UserPermission
+from .models import Article
+
+
+class ArticleAdmin(VarCMSModelAdmin):
+    list_display     = ["title", "status", "author", "created_at"]
+    readonly_fields  = ["created_at", "updated_at"]
+
+    permissions = [
+        # Role-based permissions
+        RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+        RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("author",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+
+        # Group-based (identical behaviour, different import for readability)
+        GroupPermission("moderators", add=False, list=True, view=True, edit=True, delete=False),
+
+        # Per-user override — alice can delete despite being in the viewer group
+        UserPermission("alice",     add=True,  list=True, view=True, edit=True,  delete=True),
+    ]
+
+    role_editable_fields = {
+        "superuser":   "__all__",
+        "editor":      ["title", "slug", "body", "status", "category", "is_featured"],
+        "author":      ["title", "body", "status"],
+        "moderators":  ["status"],
+        "*":           [],   # all other authenticated roles: no edits
+    }
+
+
+var_cms_site.register(Article, ArticleAdmin)
+```
+
+---
+
+## Resolution Cheat-Sheet
+
+| Scenario | Result |
+|---|---|
+| `UserPermission` matches username | That entry wins; no further checks |
+| `RolePermission` matches role | That entry's action value is returned |
+| No match in permissions list | `False` — access denied |
+| `role_editable_fields[role]` exists | That value returned (list or `"__all__"`) |
+| `role == "superuser"` but no key set | `"__all__"` returned automatically |
+| Key `"*"` in `role_editable_fields` | Wildcard value returned for unknown roles |
+| No match and no wildcard | `[]` — no fields editable |

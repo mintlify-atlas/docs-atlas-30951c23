@@ -1,47 +1,280 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Quickstart: Register Your First Model with django-var-cms"
+sidebarTitle: "Quickstart"
+description: "Create a var_cms_admin.py file, register a Django model, configure role-based permissions, and access your dashboard in under five minutes."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+This guide walks you through registering your first Django model with django-var-cms. By the end you will have a fully functional list view, add/edit forms, a read-only detail page, and role-based access control — all without writing a single URL pattern or template. The examples use the `Article` model from the demo app, which covers the most common field types and permission patterns.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+
+  <Step title="Create myapp/var_cms_admin.py">
+    django-var-cms uses an auto-discovery mechanism identical to Django's admin. On startup, `VarCmsConfig.ready()` loops over every entry in `INSTALLED_APPS` and tries to import `<app>.var_cms_admin`. If the file exists it is loaded; if it is missing it is silently skipped.
+
+    Create the file in your app directory:
 
     ```bash
-    npm install your-package
+    touch myapp/var_cms_admin.py
     ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
-    ```bash
-    your-cli init
-    ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+    At a minimum, the file must import `var_cms_site` and call `.register()`:
 
-    ```bash
-    your-cli start
+    ```python myapp/var_cms_admin.py
+    from var_cms.registry import var_cms_site, VarCMSModelAdmin
+    from .models import Article
+
+    var_cms_site.register(Article, VarCMSModelAdmin)
+    ```
+
+    That single line is enough to get a working list view, add form, edit form, and detail page. All display and permission options below are additive enhancements.
+
+    <Note>
+      Make sure `"myapp"` is listed in `INSTALLED_APPS` in your `settings.py`. The auto-discovery only processes apps that Django knows about.
+    </Note>
+  </Step>
+
+  <Step title="Define a ModelAdmin class">
+    Replace the bare `VarCMSModelAdmin` reference with a subclass that describes how the model should appear in the CMS. The `Article` model below demonstrates the most useful display options:
+
+    ```python myapp/var_cms_admin.py
+    from var_cms.registry import var_cms_site, VarCMSModelAdmin
+    from .models import Article
+
+    class ArticleAdmin(VarCMSModelAdmin):
+        # Columns shown in the paginated list view
+        list_display    = ["title", "category", "author", "status", "is_featured", "view_count", "created_at"]
+
+        # Sidebar filter widgets rendered on the list view
+        list_filter     = ["status", "is_featured", "category"]
+
+        # Fields searched when the user types in the search box
+        search_fields   = ["title", "body", "author"]
+
+        # Fields shown on the form but never editable by anyone
+        readonly_fields = ["created_at", "updated_at", "view_count"]
+
+        # Default sort order for the list view
+        ordering        = ["-created_at"]
+
+        # Records per page (default: 25)
+        list_per_page   = 20
+
+        # Render body as a Quill.js rich-text editor instead of a plain <textarea>
+        html_fields     = ["body"]
+
+        # Lucide icon name shown next to the model in the sidebar and dashboard
+        icon            = "file-text"
+
+        # Show a card for this model on the dashboard
+        dashboard_card  = True
+
+        # Quick-action buttons rendered on the dashboard card
+        card_buttons = [
+            {"label": "All Articles", "action": "list"},
+            {"label": "Write Draft",  "action": "add"},
+        ]
+
+        # Regex validator: enforced client-side (HTML pattern attr) and server-side
+        regex_validators = {
+            "slug": (r"^[a-z0-9-]+$", "Slug must consist of lowercase letters, numbers, and hyphens only.")
+        }
     ```
   </Step>
+
+  <Step title="Add RolePermission entries">
+    Without a `permissions` list, only superusers can access the model. Add `RolePermission` objects for each Django Group you want to grant access, and optionally a `UserPermission` for a specific user account:
+
+    ```python myapp/var_cms_admin.py
+    from var_cms.registry import var_cms_site, VarCMSModelAdmin
+    from var_cms.permissions import RolePermission, UserPermission
+    from .models import Article
+
+    class ArticleAdmin(VarCMSModelAdmin):
+        list_display    = ["title", "category", "author", "status", "is_featured", "view_count", "created_at"]
+        list_filter     = ["status", "is_featured", "category"]
+        search_fields   = ["title", "body", "author"]
+        readonly_fields = ["created_at", "updated_at", "view_count"]
+        ordering        = ["-created_at"]
+        list_per_page   = 20
+        html_fields     = ["body"]
+        icon            = "file-text"
+        dashboard_card  = True
+
+        # ── Role-based action permissions ─────────────────────────────────────
+        permissions = [
+            RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+            RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+            RolePermission("author",    add=True,  list=True, view=True, edit=True,  delete=False),
+            RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+            # Per-user override — "alice" gets delete even though she is in the viewer group
+            UserPermission("alice",     add=True,  list=True, view=True, edit=True,  delete=True),
+        ]
+
+        # ── Per-role field-level edit restrictions ────────────────────────────
+        role_editable_fields = {
+            "superuser": "__all__",                                          # no restrictions
+            "editor":    ["title", "slug", "body", "status", "category", "is_featured"],
+            "author":    ["title", "body", "status"],                        # can't touch slug or category
+            "*":         [],                                                 # all other roles: read-only
+        }
+    ```
+
+    <Tip>
+      Role names in `RolePermission` match Django Group names exactly (case-sensitive). The special role `"superuser"` is resolved from `request.user.is_superuser` rather than a group membership. `UserPermission` matches against the Django `USERNAME_FIELD` (default: `username`).
+    </Tip>
+  </Step>
+
+  <Step title="Register the model">
+    Call `var_cms_site.register()` at the bottom of the file, **after** the class definition:
+
+    ```python myapp/var_cms_admin.py
+    var_cms_site.register(Article, ArticleAdmin)
+    ```
+
+    You can register multiple models in a single file:
+
+    ```python myapp/var_cms_admin.py
+    var_cms_site.register(Category,   CategoryAdmin)
+    var_cms_site.register(Article,    ArticleAdmin)
+    var_cms_site.register(MediaAsset, MediaAssetAdmin)
+    ```
+  </Step>
+
+  <Step title="Start the server and open the dashboard">
+    ```bash
+    python manage.py runserver
+    ```
+
+    Navigate to [http://127.0.0.1:8000/var-cms/](http://127.0.0.1:8000/var-cms/) and log in. Your registered models appear in the left sidebar under their app label, and any model with `dashboard_card = True` shows a live record-count card on the home screen.
+
+    <Note>
+      If you haven't created a superuser yet, run `python manage.py createsuperuser` first. The CMS login page is at `/var-cms/login/`.
+    </Note>
+  </Step>
+
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Complete Working Example
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+Here is a self-contained `var_cms_admin.py` based directly on the demo app, ready to copy into your own project. It registers `Article` with full role-based permissions, a Quill.js editor, slug validation, and dashboard card buttons:
+
+```python myapp/var_cms_admin.py
+"""
+myapp/var_cms_admin.py
+======================
+Auto-discovered by var_cms on startup.
+"""
+
+from var_cms.registry import var_cms_site, VarCMSModelAdmin
+from var_cms.permissions import RolePermission, UserPermission
+from .models import Article
+
+
+class ArticleAdmin(VarCMSModelAdmin):
+    # ── List view ─────────────────────────────────────────────────────────────
+    list_display    = ["title", "category", "author", "status", "is_featured", "view_count", "created_at"]
+    list_filter     = ["status", "is_featured", "category"]
+    search_fields   = ["title", "body", "author"]
+    ordering        = ["-created_at"]
+    list_per_page   = 20
+
+    # ── Form ──────────────────────────────────────────────────────────────────
+    readonly_fields  = ["created_at", "updated_at", "view_count"]
+    html_fields      = ["body"]   # Quill.js rich-text editor
+    regex_validators = {
+        "slug": (r"^[a-z0-9-]+$", "Slug must consist of lowercase letters, numbers, and hyphens only.")
+    }
+
+    # ── Form layout (optional) ────────────────────────────────────────────────
+    form_field_widths = {
+        "title":    "two-thirds",
+        "status":   "one-third",
+        "category": "half",
+        "author":   "half",
+    }
+    form_field_placeholders = {
+        "title": "Enter article title...",
+    }
+    form_field_help_texts = {
+        "body": "Write the full article content using the Quill editor.",
+    }
+
+    # ── Dashboard ─────────────────────────────────────────────────────────────
+    icon           = "file-text"
+    dashboard_card = True
+    card_buttons   = [
+        {"label": "All Articles", "action": "list"},
+        {"label": "Write Draft",  "action": "add"},
+    ]
+
+    # ── Role-based permissions ────────────────────────────────────────────────
+    permissions = [
+        RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+        RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("author",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+        UserPermission("alice",     add=True,  list=True, view=True, edit=True,  delete=True),
+    ]
+
+    # ── Per-role editable fields ──────────────────────────────────────────────
+    role_editable_fields = {
+        "superuser": "__all__",
+        "editor":    ["title", "slug", "body", "status", "category", "is_featured"],
+        "author":    ["title", "body", "status"],
+        "*":         [],
+    }
+
+
+var_cms_site.register(Article, ArticleAdmin)
+```
+
+And the corresponding `Article` model for reference:
+
+```python myapp/models.py
+from django.db import models
+
+STATUS_CHOICES = [
+    ("draft",     "Draft"),
+    ("published", "Published"),
+    ("archived",  "Archived"),
+]
+
+
+class Article(models.Model):
+    title       = models.CharField(max_length=255)
+    slug        = models.SlugField(unique=True)
+    category    = models.ForeignKey("Category", on_delete=models.SET_NULL, null=True, blank=True)
+    author      = models.CharField(max_length=120)
+    body        = models.TextField()
+    status      = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft")
+    is_featured = models.BooleanField(default=False)
+    view_count  = models.PositiveIntegerField(default=0)
+    rating      = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name         = "article"
+        verbose_name_plural  = "articles"
+        ordering             = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Role-Based Permissions" icon="shield-check" href="/guides/role-permissions">
+    Deep dive into `RolePermission`, `UserPermission`, `role_editable_fields`, and the wildcard `"*"` fallback role. Learn how permission resolution works at request time.
+  </Card>
+  <Card title="Form Layouts" icon="layout-panel-top" href="/guides/form-layouts">
+    Customise form column widths with the 12-column grid presets, group fields into visual rows with `form_field_rows`, add placeholders and help text, and switch dropdown widgets to searchable or multi-select variants.
+  </Card>
+  <Card title="Media Handling" icon="image" href="/guides/media-handling">
+    Enable modal previews for images, video, audio, and PDFs. Use the built-in image cropper and the `/api/media/convert/` endpoint to transform file formats on the fly.
+  </Card>
+  <Card title="VarCMSModelAdmin API" icon="code" href="/api/var-cms-model-admin">
+    Full reference for every attribute and hook method on `VarCMSModelAdmin`: `save_model`, `delete_model`, `get_queryset`, `custom_object_actions`, dashboard card configuration, and more.
+  </Card>
+</CardGroup>

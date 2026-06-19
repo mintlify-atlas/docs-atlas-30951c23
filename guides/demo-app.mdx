@@ -1,0 +1,287 @@
+---
+title: "Explore the django-var-cms Demo Application"
+sidebarTitle: "Demo App"
+description: "Run the included demo app to explore all django-var-cms features with seeded models, test user accounts, and role-based permissions configured out of the box."
+---
+
+The `django-var-cms` source repository includes a fully working `demo` Django app that showcases every major feature: role-based permissions, Quill rich-text editing, image/media handling, regex validators, custom object actions, and branding configuration. It is the fastest way to see everything in action before wiring up your own project.
+
+## Setup
+
+<Steps>
+
+### Clone the repository
+
+```bash
+git clone https://github.com/rahul-baberwal/django-var-cms.git
+cd django-var-cms
+```
+
+### Install dependencies
+
+<CodeGroup>
+
+```bash uv
+uv sync
+```
+
+```bash pip
+pip install -e ".[dev]"
+```
+
+</CodeGroup>
+
+### Run migrations
+
+Initialize the SQLite database with all required tables:
+
+```bash
+python manage.py migrate
+```
+
+### Seed demo data
+
+The `seed_demo` management command creates groups, test user accounts, sample categories, articles, pages, and media asset records in one step:
+
+```bash
+python manage.py seed_demo
+```
+
+### Start the development server
+
+```bash
+python manage.py runserver
+```
+
+### Open the CMS dashboard
+
+Navigate to [http://127.0.0.1:8000/var-cms/](http://127.0.0.1:8000/var-cms/) and log in with any of the demo accounts below.
+
+</Steps>
+
+## Demo user accounts
+
+The `seed_demo` command creates five ready-to-use accounts covering every permission tier:
+
+| Username | Password | Role | Permissions |
+| :--- | :--- | :--- | :--- |
+| **admin** | admin | superuser | Full unrestricted access |
+| **editor** | editor | editor | Add + Edit (no delete) |
+| **author** | author | author | Add + Edit limited fields (no delete) |
+| **viewer** | viewer | viewer | List + View records only |
+| **alice** | alice | viewer | Viewer group + per-user delete override |
+
+<Note>
+  `alice` is a member of the `viewer` group but has a `UserPermission` override
+  applied directly on the `Article` model that grants her add, edit, and delete
+  rights. This demonstrates how `UserPermission` can extend or override group
+  permissions on a per-user, per-model basis.
+</Note>
+
+## Demo models
+
+The demo app registers four models that together exercise the full feature surface of django-var-cms.
+
+### Category
+
+Simple taxonomy model for grouping articles.
+
+| Field | Type | Notes |
+| :--- | :--- | :--- |
+| `name` | `CharField` | Display name |
+| `slug` | `SlugField` | Unique; regex-validated (`^[a-z0-9-]+$`) |
+| `description` | `TextField` | Optional |
+| `is_active` | `BooleanField` | Toggled via a custom object action |
+
+### Article
+
+The primary content model. Demonstrates Quill editor, FK relationships, and multi-role editable field restrictions.
+
+| Field | Type | Notes |
+| :--- | :--- | :--- |
+| `title` | `CharField` | Max 255 chars |
+| `slug` | `SlugField` | Unique |
+| `category` | `ForeignKey` → `Category` | Nullable |
+| `author` | `CharField` | Plain text author name |
+| `body` | `TextField` | Rendered with Quill.js (`html_fields = ["body"]`) |
+| `status` | `CharField` (choices) | `draft` / `published` / `archived` |
+| `is_featured` | `BooleanField` | — |
+| `view_count` | `PositiveIntegerField` | Read-only |
+| `rating` | `DecimalField` | Nullable, 1 decimal place |
+
+### MediaAsset
+
+Demonstrates `ImageField`, `FileField`, modal-based previews, and the built-in image cropper.
+
+| Field | Type | Notes |
+| :--- | :--- | :--- |
+| `title` | `CharField` | Max 200 chars |
+| `asset_type` | `CharField` (choices) | `image` / `video` / `audio` / `document` / `other` |
+| `image` | `ImageField` | Uploaded to `var_cms/images/%Y/%m/` |
+| `file` | `FileField` | Uploaded to `var_cms/files/%Y/%m/` |
+| `alt_text` | `CharField` | Optional accessibility label |
+| `description` | `TextField` | Optional |
+| `tags` | `CharField` | Comma-separated tag string |
+
+### Page
+
+Hierarchical CMS page model with self-referential parent FK and Quill body.
+
+| Field | Type | Notes |
+| :--- | :--- | :--- |
+| `title` | `CharField` | Max 255 chars |
+| `slug` | `SlugField` | Unique |
+| `meta_desc` | `CharField` | Max 160 chars, for SEO |
+| `body` | `TextField` | Quill editor (`html_fields = ["body"]`) |
+| `parent` | `ForeignKey` → `self` | Nullable self-reference for page tree |
+| `is_published` | `BooleanField` | — |
+| `show_in_nav` | `BooleanField` | — |
+| `sort_order` | `PositiveSmallIntegerField` | Controls ordering |
+
+## Complete `var_cms_admin.py` reference
+
+The full registration file from the demo app is reproduced below. It is auto-discovered by `var_cms` at startup — no explicit import or `INSTALLED_APPS` entry is needed beyond adding `"demo"` to your app list.
+
+```python demo/var_cms_admin.py
+"""
+demo/var_cms_admin.py
+=====================
+Auto-discovered by var_cms on startup.
+Demonstrates all registration options including role-based permissions.
+"""
+
+from var_cms.registry import var_cms_site, VarCMSModelAdmin
+from var_cms.permissions import RolePermission, UserPermission
+from .models import Article, Category, MediaAsset, Page
+
+
+class CategoryAdmin(VarCMSModelAdmin):
+    list_display  = ["name", "slug", "is_active", "created_at"]
+    list_filter   = ["is_active"]
+    search_fields = ["name", "slug", "description"]
+    readonly_fields = ["created_at"]
+    ordering = ["name"]
+    icon = "folder"
+    dashboard_card = True
+    regex_validators = {
+        "slug": (r"^[a-z0-9-]+$", "Slug must consist of lowercase letters, numbers, and hyphens only.")
+    }
+
+    permissions = [
+        RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+        RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+    ]
+    role_editable_fields = {
+        "superuser": "__all__",
+        "editor":    ["name", "description", "is_active"],
+    }
+    custom_object_actions = [
+        {
+            "name": "toggle_active",
+            "label": "Toggle Active",
+            "class": "btn-blue",
+            "icon": "shuffle",
+            "action_fn": "toggle_active_status"
+        }
+    ]
+
+    def toggle_active_status(self, request, obj):
+        from django.contrib import messages
+        obj.is_active = not obj.is_active
+        obj.save()
+        messages.success(request, f"Category '{obj.name}' active status toggled to {obj.is_active}.")
+        return None
+
+
+class ArticleAdmin(VarCMSModelAdmin):
+    list_display  = ["title", "category", "author", "status", "is_featured", "view_count", "created_at"]
+    list_filter   = ["status", "is_featured", "category"]
+    search_fields = ["title", "body", "author"]
+    readonly_fields = ["created_at", "updated_at", "view_count"]
+    ordering = ["-created_at"]
+    list_per_page = 20
+    html_fields = ["body"]
+    icon = "file-text"
+    dashboard_card = True
+    card_buttons = [
+        {"label": "All Articles", "action": "list"},
+        {"label": "Write Draft", "action": "add"}
+    ]
+
+    permissions = [
+        RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+        RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("author",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+        # Per-user override — "alice" can delete even as a viewer
+        UserPermission("alice",     add=True,  list=True, view=True, edit=True,  delete=True),
+    ]
+    role_editable_fields = {
+        "superuser": "__all__",
+        "editor":    ["title", "slug", "body", "status", "category", "is_featured"],
+        "author":    ["title", "body", "status"],   # authors can't touch slug/category
+        "*":         [],  # all other roles: no edits
+    }
+
+
+class MediaAssetAdmin(VarCMSModelAdmin):
+    list_display  = ["title", "asset_type", "image", "file", "tags", "created_at"]
+    list_filter   = ["asset_type"]
+    search_fields = ["title", "alt_text", "tags", "description"]
+    readonly_fields = ["created_at"]
+    icon = "image"
+    dashboard_card = True
+
+    permissions = [
+        RolePermission("superuser", add=True, list=True, view=True, edit=True, delete=True),
+        RolePermission("editor",    add=True, list=True, view=True, edit=True, delete=True),
+        RolePermission("viewer",    add=False,list=True, view=True, edit=False,delete=False),
+    ]
+    role_editable_fields = {
+        "superuser": "__all__",
+        "editor":    "__all__",
+    }
+
+
+class PageAdmin(VarCMSModelAdmin):
+    list_display  = ["title", "slug", "parent", "is_published", "show_in_nav", "sort_order"]
+    list_filter   = ["is_published", "show_in_nav"]
+    search_fields = ["title", "slug", "body", "meta_desc"]
+    readonly_fields = ["created_at"]
+    ordering = ["sort_order", "title"]
+    html_fields = ["body"]
+    icon = "book-open"
+    dashboard_card = True
+
+    permissions = [
+        RolePermission("superuser", add=True, list=True, view=True, edit=True, delete=True),
+        RolePermission("editor",    add=True, list=True, view=True, edit=True, delete=False),
+        RolePermission("viewer",    add=False,list=True, view=True, edit=False,delete=False),
+    ]
+    role_editable_fields = {
+        "superuser": "__all__",
+        "editor":    ["title", "body", "meta_desc", "is_published", "show_in_nav", "sort_order"],
+    }
+
+
+var_cms_site.register(Category,   CategoryAdmin)
+var_cms_site.register(Article,    ArticleAdmin)
+var_cms_site.register(MediaAsset, MediaAssetAdmin)
+var_cms_site.register(Page,       PageAdmin)
+```
+
+## About `seed_demo`
+
+<Note>
+  `python manage.py seed_demo` is **idempotent** — re-running it will not
+  duplicate records. It uses `get_or_create` throughout, so it is safe to run
+  multiple times or after resetting individual tables. It seeds:
+
+  - **Groups**: `editor`, `author`, `viewer`
+  - **Users**: the five accounts listed above (skipped if already present)
+  - **Categories**: Technology, Design, Business, Science
+  - **Articles**: 12 sample articles across all statuses and categories
+  - **Pages**: Home, About Us, Contact, Privacy Policy
+  - **Media assets**: 4 placeholder records (no actual files — upload via the CMS)
+</Note>

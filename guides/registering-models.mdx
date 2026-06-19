@@ -1,0 +1,305 @@
+---
+title: "Registering Django Models with django-var-cms"
+sidebarTitle: "Registering Models"
+description: "Learn how to create var_cms_admin.py files, define VarCMSModelAdmin subclasses, and register Django models with the global var_cms_site registry."
+---
+
+When `var_cms` starts up, it automatically iterates every entry in `INSTALLED_APPS` and attempts to import `{app}.var_cms_admin` for each app. This means you never need to manually wire up any import — simply create the file in your app directory and django-var-cms will discover and load it at startup, registering all of your models with the global `var_cms_site` registry.
+
+## Creating `var_cms_admin.py`
+
+<Steps>
+  <Step title="Create the file">
+    Inside any Django app that you want to expose in the CMS, create a file named `var_cms_admin.py` at the root of that app:
+
+    ```
+    myapp/
+    ├── models.py
+    ├── views.py
+    ├── var_cms_admin.py   ← create this
+    └── ...
+    ```
+  </Step>
+
+  <Step title="Import the registry and base class">
+    At the top of your new file, import the global site instance and the base admin class:
+
+    ```python
+    # myapp/var_cms_admin.py
+    from var_cms.registry import var_cms_site, VarCMSModelAdmin
+    from .models import Article, Category
+    ```
+  </Step>
+
+  <Step title="Define an admin class">
+    Subclass `VarCMSModelAdmin` and declare your configuration as class attributes:
+
+    ```python
+    class ArticleAdmin(VarCMSModelAdmin):
+        list_display  = ["title", "category", "author", "status", "created_at"]
+        list_filter   = ["status", "category"]
+        search_fields = ["title", "body", "author"]
+        ordering      = ["-created_at"]
+        icon          = "file-text"
+    ```
+  </Step>
+
+  <Step title="Register with var_cms_site">
+    Call `var_cms_site.register()` at module level, passing the model class and your admin class:
+
+    ```python
+    var_cms_site.register(Article, ArticleAdmin)
+    ```
+  </Step>
+</Steps>
+
+## Class Attributes Reference
+
+Every attribute on `VarCMSModelAdmin` is optional — sensible defaults are applied automatically. The table below covers all basic configuration options.
+
+| Attribute | Type | Default | Description |
+|---|---|---|---|
+| `list_display` | `list[str]` | First 6 model fields | Column names shown in the list view table |
+| `list_filter` | `list[str]` | `[]` | Fields rendered as sidebar filter widgets |
+| `search_fields` | `list[str]` | `[]` | Fields searched with a case-insensitive `icontains` lookup |
+| `ordering` | `list[str]` | `[]` | Default queryset ordering (prefix `-` for descending) |
+| `list_per_page` | `int` | `25` | Number of rows per page in the list view |
+| `list_select_related` | `bool` | `False` | Call `select_related()` on the queryset to reduce N+1 queries |
+| `readonly_fields` | `list[str]` | `[]` | Fields always displayed but never editable |
+| `exclude_fields` | `list[str]` | `[]` | Fields hidden from the form entirely |
+| `icon` | `str` | `""` | Lucide icon name displayed beside the model in the sidebar and dashboard |
+| `dashboard_card` | `bool` | `False` | Whether this model appears as a card on the dashboard |
+
+### The `icon` attribute
+
+The `icon` value is a **Lucide icon name** — the same string you would use in `<i data-lucide="...">`. You can browse the full icon catalogue at [lucide.dev](https://lucide.dev/icons/). Common examples for CMS models:
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    icon = "file-text"      # articles / posts
+
+class CategoryAdmin(VarCMSModelAdmin):
+    icon = "folder"         # categories / folders
+
+class MediaAssetAdmin(VarCMSModelAdmin):
+    icon = "image"          # media / images
+
+class PageAdmin(VarCMSModelAdmin):
+    icon = "book-open"      # pages / documents
+```
+
+### The `dashboard_card` attribute
+
+By default every registered model is **hidden** from the dashboard (`dashboard_card = False`). Set it to `True` to show a stats card for that model on the home screen:
+
+```python
+class InvoiceAdmin(VarCMSModelAdmin):
+    dashboard_card = True    # will appear on the dashboard
+
+class AuditLogAdmin(VarCMSModelAdmin):
+    dashboard_card = False   # hidden from dashboard (default)
+```
+
+You can also control visibility globally from `settings.py` without touching individual admin classes:
+
+```python
+# settings.py
+
+# Hide specific model cards by app.model or model name:
+VAR_CMS_HIDDEN_DASHBOARD_CARDS = ["demo.category", "logentry"]
+
+# Show ONLY these model cards (all others are hidden):
+VAR_CMS_SHOWN_DASHBOARD_CARDS  = ["article", "invoice"]
+```
+
+## Unregistering a Model
+
+Call `var_cms_site.unregister()` to remove a previously registered model. This is useful when you want to override a registration made in a third-party app:
+
+```python
+from var_cms.registry import var_cms_site
+from third_party_app.models import SomeModel
+
+# Remove the default registration
+var_cms_site.unregister(SomeModel)
+
+# Optionally re-register with your own admin class
+class MySomeModelAdmin(VarCMSModelAdmin):
+    list_display = ["name", "created_at"]
+
+var_cms_site.register(SomeModel, MySomeModelAdmin)
+```
+
+## `save_model()` and `delete_model()` Hooks
+
+`VarCMSModelAdmin` exposes two lifecycle hooks that you can override for custom save or delete behaviour.
+
+### `save_model(request, obj, form, change)`
+
+Called whenever an object is saved (both create and update). The default implementation auto-populates `slug` from `title`/`name`/`headline` if the field is empty, then calls `obj.save()`.
+
+| Parameter | Description |
+|---|---|
+| `request` | The current `HttpRequest` |
+| `obj` | The unsaved model instance |
+| `form` | The bound `ModelForm` instance |
+| `change` | `True` when updating an existing record; `False` on create |
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    def save_model(self, request, obj, form, change):
+        if not change:
+            # Auto-assign the current user as author on creation
+            obj.author = request.user.get_username()
+        super().save_model(request, obj, form, change)
+```
+
+### `delete_model(request, obj)`
+
+Called when an object is deleted. The default implementation calls `obj.delete()`.
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    def delete_model(self, request, obj):
+        # Archive instead of hard-delete
+        obj.status = "archived"
+        obj.save()
+```
+
+## Complete Example
+
+The following example is taken directly from the demo app and shows `CategoryAdmin` and `ArticleAdmin` with realistic field configurations, permissions, and lifecycle hooks.
+
+<Tabs>
+  <Tab title="models.py">
+    ```python
+    # demo/models.py
+    from django.db import models
+
+    class Category(models.Model):
+        name        = models.CharField(max_length=100)
+        slug        = models.SlugField(unique=True)
+        description = models.TextField(blank=True)
+        is_active   = models.BooleanField(default=True)
+        created_at  = models.DateTimeField(auto_now_add=True)
+
+        class Meta:
+            verbose_name = "category"
+            verbose_name_plural = "categories"
+            ordering = ["name"]
+
+        def __str__(self):
+            return self.name
+
+
+    STATUS_CHOICES = [
+        ("draft",     "Draft"),
+        ("published", "Published"),
+        ("archived",  "Archived"),
+    ]
+
+    class Article(models.Model):
+        title       = models.CharField(max_length=255)
+        slug        = models.SlugField(unique=True)
+        category    = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
+        author      = models.CharField(max_length=120)
+        body        = models.TextField()
+        status      = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft")
+        is_featured = models.BooleanField(default=False)
+        view_count  = models.PositiveIntegerField(default=0)
+        rating      = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
+        created_at  = models.DateTimeField(auto_now_add=True)
+        updated_at  = models.DateTimeField(auto_now=True)
+
+        class Meta:
+            verbose_name = "article"
+            verbose_name_plural = "articles"
+            ordering = ["-created_at"]
+
+        def __str__(self):
+            return self.title
+    ```
+  </Tab>
+  <Tab title="var_cms_admin.py">
+    ```python
+    # demo/var_cms_admin.py
+    from var_cms.registry import var_cms_site, VarCMSModelAdmin
+    from var_cms.permissions import RolePermission, UserPermission
+    from .models import Article, Category
+
+
+    class CategoryAdmin(VarCMSModelAdmin):
+        list_display    = ["name", "slug", "is_active", "created_at"]
+        list_filter     = ["is_active"]
+        search_fields   = ["name", "slug", "description"]
+        readonly_fields = ["created_at"]
+        ordering        = ["name"]
+        icon            = "folder"
+        dashboard_card  = True
+
+        # Regex validation for the slug field (client-side + server-side)
+        regex_validators = {
+            "slug": (r"^[a-z0-9-]+$", "Slug must consist of lowercase letters, numbers, and hyphens only.")
+        }
+
+        permissions = [
+            RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+            RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+            RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+        ]
+        role_editable_fields = {
+            "superuser": "__all__",
+            "editor":    ["name", "description", "is_active"],
+        }
+
+
+    class ArticleAdmin(VarCMSModelAdmin):
+        list_display    = ["title", "category", "author", "status", "is_featured", "view_count", "created_at"]
+        list_filter     = ["status", "is_featured", "category"]
+        search_fields   = ["title", "body", "author"]
+        readonly_fields = ["created_at", "updated_at", "view_count"]
+        ordering        = ["-created_at"]
+        list_per_page   = 20
+        html_fields     = ["body"]   # Quill.js rich text editor
+        icon            = "file-text"
+        dashboard_card  = True
+
+        card_buttons = [
+            {"label": "All Articles", "action": "list"},
+            {"label": "Write Draft",  "action": "add"},
+        ]
+
+        permissions = [
+            RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+            RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+            RolePermission("author",    add=True,  list=True, view=True, edit=True,  delete=False),
+            RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+            # Per-user override — "alice" can delete even though she is in the viewer group
+            UserPermission("alice",     add=True,  list=True, view=True, edit=True,  delete=True),
+        ]
+        role_editable_fields = {
+            "superuser": "__all__",
+            "editor":    ["title", "slug", "body", "status", "category", "is_featured"],
+            "author":    ["title", "body", "status"],   # authors can't touch slug/category
+            "*":         [],                             # all other roles: read-only
+        }
+
+        def save_model(self, request, obj, form, change):
+            if not change:
+                obj.author = request.user.get_username()
+            super().save_model(request, obj, form, change)
+
+
+    var_cms_site.register(Category, CategoryAdmin)
+    var_cms_site.register(Article,  ArticleAdmin)
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  If you want every model in an app to use default settings with no customisation, you can pass `VarCMSModelAdmin` directly as the second argument — or omit it entirely, since `None` defaults to the base class:
+
+  ```python
+  var_cms_site.register(MySimpleModel, VarCMSModelAdmin)
+  ```
+</Tip>

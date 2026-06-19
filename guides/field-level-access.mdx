@@ -1,0 +1,250 @@
+---
+title: "Field-Level Edit Access Control by Role in django-var-cms"
+sidebarTitle: "Field-Level Access"
+description: "Restrict which form fields each Django group role can edit using role_editable_fields, while readonly_fields prevent editing for all users regardless of role."
+---
+
+django-var-cms provides two independent layers of field access control that work together to give you precise RBAC over what each user can modify on a form. The first layer, `readonly_fields`, is a hard global lock — those fields are shown to everyone but cannot be edited by anyone. The second layer, `role_editable_fields`, is a per-role allowlist that controls which of the remaining fields a user with a given role is actually allowed to change. Together they let you express rules like "authors can only touch the title, body, and status fields, while editors also control the slug and category."
+
+---
+
+## Field Access Attributes
+
+### `readonly_fields`
+
+A list of field names that are **always rendered as read-only** regardless of who is logged in. These fields are excluded from the editable form and displayed separately in the detail section of the form template.
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    # Shown on the form, but no role can ever edit them
+    readonly_fields = ["created_at", "updated_at", "view_count"]
+```
+
+<Note>
+`readonly_fields` entries are excluded from the `modelform_factory` call entirely — they are never included in the form's field set. They appear in a separate read-only section rendered by the form template. This means they are immune to any `role_editable_fields` configuration and cannot accidentally be re-enabled by a wildcard rule.
+</Note>
+
+---
+
+### `exclude_fields`
+
+A list of field names that are **hidden from the form entirely** — not shown and not editable. Use this for internal or sensitive fields that should not be exposed in the CMS interface at all.
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    # These fields will not appear in the form or detail view
+    exclude_fields = ["internal_notes", "legacy_id"]
+```
+
+Unlike `readonly_fields`, excluded fields do not appear anywhere on the form. They are silently removed during form generation.
+
+---
+
+### `role_editable_fields`
+
+A dictionary that maps role names to the list of fields that role may edit. It is the primary mechanism for fine-grained, role-scoped field access.
+
+```python
+role_editable_fields: Dict[str, Union[List[str], str]] = {}
+```
+
+**Key format**
+
+| Key | Meaning |
+|-----|---------|
+| `"superuser"` | Applies to users where `is_superuser` is `True` |
+| `"editor"`, `"author"`, etc. | Applies to users in the matching Django group |
+| `"*"` | Wildcard — applies to any role not matched by a specific key |
+
+**Value format**
+
+| Value | Meaning |
+|-------|---------|
+| `["field1", "field2", ...]` | Only these fields are editable |
+| `"__all__"` | All non-readonly, non-excluded fields are editable |
+| `[]` | No fields are editable (form is fully read-only for this role) |
+
+---
+
+## Resolution: `resolve_editable_fields()`
+
+The resolution logic lives in `var_cms/permissions.py`:
+
+```python
+def resolve_editable_fields(
+    role_editable_fields: Dict[str, Union[List[str], str]],
+    role: str,
+) -> Union[List[str], str]:
+    """
+    Return the editable fields for a given role.
+    Falls back to "__all__" for superuser if not explicitly set.
+    """
+    if role in role_editable_fields:
+        return role_editable_fields[role]
+    if role == "superuser":
+        return "__all__"
+    # Check wildcard
+    if "*" in role_editable_fields:
+        return role_editable_fields["*"]
+    return []   # deny all edits for unknown roles
+```
+
+The four-step fallback chain is:
+
+1. **Exact role match** — if the resolved role string has an entry in `role_editable_fields`, use it.
+2. **Superuser default** — if the role is `"superuser"` and no explicit entry exists, return `"__all__"` automatically.
+3. **Wildcard `"*"`** — if neither of the above matched, check for a `"*"` key and use its value.
+4. **Deny all edits** — if nothing matched, return `[]`, making the form completely read-only for this user.
+
+<Tip>
+Always include a `"*": []` entry as a safe default when you only want specific roles to have edit access. This makes your intent explicit and avoids surprising behaviour when a user belongs to a group that is not listed.
+</Tip>
+
+---
+
+## How Fields Are Disabled in the Form
+
+`get_editable_fields(request)` wraps `resolve_editable_fields()` and is called during form construction in `get_form()`:
+
+```python
+def get_editable_fields(self, request) -> Union[List[str], str]:
+    """Return list of field names this user may edit, or '__all__'."""
+    role = self._get_user_role(request)
+    if self.role_editable_fields:
+        return resolve_editable_fields(self.role_editable_fields, role)
+    return "__all__"
+```
+
+Inside `get_form()`, after the Django `ModelForm` is instantiated, each field not in the editable list has `disabled = True` applied:
+
+```python
+# Disable fields that the user does not have permission to edit
+for field_name, field_obj in form_inst.fields.items():
+    if editable != "__all__" and isinstance(editable, list):
+        if field_name not in editable:
+            field_obj.disabled = True
+```
+
+Setting `field.disabled = True` on a Django form field renders the widget as disabled in HTML and causes Django to ignore any submitted value for that field — preventing client-side tampering even if a user manually edits the HTML.
+
+---
+
+## Complete Example — ArticleAdmin
+
+The demo `ArticleAdmin` demonstrates a four-tier field access matrix:
+
+```python
+from var_cms.registry import var_cms_site, VarCMSModelAdmin
+from var_cms.permissions import RolePermission, UserPermission
+from .models import Article
+
+class ArticleAdmin(VarCMSModelAdmin):
+    list_display    = ["title", "category", "author", "status", "is_featured", "view_count", "created_at"]
+    list_filter     = ["status", "is_featured", "category"]
+    search_fields   = ["title", "body", "author"]
+
+    # Layer 1: hard read-only for everyone — never editable regardless of role
+    readonly_fields = ["created_at", "updated_at", "view_count"]
+
+    ordering      = ["-created_at"]
+    list_per_page = 20
+    html_fields   = ["body"]  # Quill rich-text editor
+    icon          = "file-text"
+
+    permissions = [
+        RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+        RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("author",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+        UserPermission("alice",     add=True,  list=True, view=True, edit=True,  delete=True),
+    ]
+
+    # Layer 2: per-role field allowlist
+    role_editable_fields = {
+        "superuser": "__all__",                                          # full access
+        "editor":    ["title", "slug", "body", "status", "category", "is_featured"],
+        "author":    ["title", "body", "status"],   # authors can't touch slug/category
+        "*":         [],  # all other roles: no edits
+    }
+
+var_cms_site.register(Article, ArticleAdmin)
+```
+
+<Accordion title="What each role sees on the Article form">
+
+| Role | Editable fields | Read-only fields (from readonly_fields) | Disabled fields |
+|------|-----------------|-----------------------------------------|-----------------|
+| superuser | All fields | `created_at`, `updated_at`, `view_count` | None |
+| editor | `title`, `slug`, `body`, `status`, `category`, `is_featured` | `created_at`, `updated_at`, `view_count` | `author`, `rating` |
+| author | `title`, `body`, `status` | `created_at`, `updated_at`, `view_count` | `slug`, `author`, `category`, `is_featured`, `rating` |
+| viewer | — (no edit permission) | `created_at`, `updated_at`, `view_count` | All fields |
+| alice | All fields (UserPermission override) | `created_at`, `updated_at`, `view_count` | None |
+
+</Accordion>
+
+---
+
+## Example — CategoryAdmin
+
+A simpler two-role setup — editors control the content fields, superusers get everything:
+
+```python
+class CategoryAdmin(VarCMSModelAdmin):
+    list_display    = ["name", "slug", "is_active", "created_at"]
+    list_filter     = ["is_active"]
+    search_fields   = ["name", "slug", "description"]
+    readonly_fields = ["created_at"]  # always shown, never editable
+    ordering        = ["name"]
+    icon            = "folder"
+
+    permissions = [
+        RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
+        RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
+        RolePermission("viewer",    add=False, list=True, view=True, edit=False, delete=False),
+    ]
+
+    role_editable_fields = {
+        "superuser": "__all__",
+        "editor":    ["name", "description", "is_active"],
+        # "slug" is not listed for editor — it will be disabled on their form
+    }
+
+var_cms_site.register(Category, CategoryAdmin)
+```
+
+<Note>
+The `slug` field in `CategoryAdmin` has a regex validator (`^[a-z0-9-]+$`) but editors cannot edit it. Only superusers can modify the slug after a category is created, preventing accidental URL-breaking edits.
+</Note>
+
+---
+
+## Combining Permissions and Field Access for Full RBAC
+
+`role_editable_fields` and `permissions` work at different levels and are designed to be used together:
+
+- **`permissions`** controls whether a user can reach the edit form at all (the `edit` action gate).
+- **`role_editable_fields`** controls which fields are actually changeable once they are on the form.
+
+```python
+permissions = [
+    RolePermission("author", add=True, list=True, view=True, edit=True, delete=False),
+]
+
+role_editable_fields = {
+    "author": ["title", "body", "status"],
+}
+```
+
+In this example an `author` user:
+
+1. **Can** open the add/edit form (the `edit` permission is `True`).
+2. **Can only** modify `title`, `body`, and `status` — all other fields render as disabled inputs.
+3. **Cannot** delete the record (the `delete` permission is `False`).
+
+<Tip>
+This pattern is ideal for content workflows where contributors should submit content but not control metadata like slugs, categories, or featured flags. Combine it with `readonly_fields` to lock audit timestamps (`created_at`, `updated_at`) for everyone.
+</Tip>
+
+<Warning>
+If `role_editable_fields` is an empty dict `{}`, `get_editable_fields()` returns `"__all__"` — every non-readonly, non-excluded field is editable by any role that has the `edit` permission. Always define `role_editable_fields` for models where different roles should have different write access to fields.
+</Warning>
