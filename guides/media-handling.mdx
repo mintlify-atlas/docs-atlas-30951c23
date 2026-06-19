@@ -12,13 +12,14 @@ django-var-cms provides three complementary media capabilities out of the box: *
 
 No configuration is needed. When a model field is an `ImageField`, the list view renders a thumbnail and clicking it opens a full-size preview modal. When a field is a `FileField`, an icon link is rendered; clicking it opens the appropriate modal player based on the file extension.
 
-| File type | Extensions | Modal behaviour |
-|-----------|------------|-----------------|
-| Image | any image format | Full-size preview |
-| Video | `mp4`, `webm`, `mov` | Inline `<video>` player |
-| Audio | `mp3`, `wav`, `ogg` | Inline `<audio>` player |
-| PDF | `pdf` | Embedded PDF viewer |
-| Other files | any | Icon link, opens/downloads in new tab |
+The icon and modal type are determined by the file extension using the following map:
+
+| Extension | Icon | Modal behaviour |
+|-----------|------|-----------------|
+| `mp4`, `webm` | video icon | Inline `<video>` player |
+| `mp3`, `wav` | music icon | Inline `<audio>` player |
+| `pdf` | file-text icon | Embedded PDF viewer |
+| Any other extension | paperclip icon | Opens/downloads in new tab |
 
 You can control the thumbnail dimensions shown in the list view with two attributes on your `VarCMSModelAdmin`:
 
@@ -42,7 +43,15 @@ Every `ImageField` widget in add/edit forms includes a built-in cropper modal po
 - Flip horizontally and/or vertically
 - Choose an output format (JPEG, PNG, or WebP)
 
-The cropped result is saved to `MEDIA_ROOT/crops/` and its URL is returned to the frontend to update the form field.
+The cropped result is saved to `MEDIA_ROOT/crops/` with a 12-character UUID hex filename and its URL is returned to the frontend to update the form field.
+
+### Transform Order
+
+When multiple transforms are applied, they are executed in this order:
+
+1. **Flip** — `scale_x = -1` flips horizontally; `scale_y = -1` flips vertically
+2. **Rotate** — rotation is applied with `expand=True` so the full image is preserved
+3. **Crop** — the crop box `(x, y, w, h)` is applied to the transformed image
 
 ### Crop API Endpoint
 
@@ -75,15 +84,17 @@ All parameters are sent as `multipart/form-data` (standard POST body).
 }
 ```
 
+The `size` array reflects the dimensions of the **cropped** image (`[width, height]`). JPEG output automatically converts RGBA images to RGB.
+
 <Note>
-  The crop endpoint is protected by `login_required`. Unauthenticated requests are redirected to the login page. Cropped images are saved under `MEDIA_ROOT/crops/` and are given a UUID-based filename to avoid collisions.
+  The crop endpoint is protected by `login_required`. Unauthenticated requests are redirected to the login page. Cropped images are saved under `MEDIA_ROOT/crops/` and are given a 12-character UUID hex filename to avoid collisions.
 </Note>
 
 ---
 
 ## Media Conversion API
 
-The conversion endpoint can transform images between formats, convert audio and video files via **ffmpeg**, and rasterise PDF pages to images via **pdf2image**.
+The conversion endpoint can transform images between formats, convert audio and video files via **ffmpeg**, and rasterise PDF pages to PNG images via **pdf2image**.
 
 ```
 POST /var-cms/api/media/convert/
@@ -102,7 +113,7 @@ POST /var-cms/api/media/convert/
 
     **Supported formats:** `jpeg` / `jpg`, `png`, `webp`, `bmp`, `tiff`, `gif`
 
-    Any combination of these formats can be converted to any other. RGBA images are automatically converted to RGB when the target is JPEG.
+    Any combination of these formats can be converted to any other. Images in `RGBA` or palette (`P`) mode are automatically converted to `RGB` when the target is JPEG. Converted images are saved with `quality=90`.
 
     **Success response:**
     ```json
@@ -114,7 +125,7 @@ POST /var-cms/api/media/convert/
     ```
   </Tab>
   <Tab title="Audio & Video (ffmpeg)">
-    Audio and video conversions are delegated to **ffmpeg**, which must be installed on the server.
+    Audio and video conversions are delegated to **ffmpeg**, which must be installed on the server. The ffmpeg process has a timeout of **120 seconds**.
 
     **Audio formats:** `mp3`, `wav`, `ogg`, `flac`, `aac`, `m4a`
 
@@ -140,21 +151,23 @@ POST /var-cms/api/media/convert/
     ```
   </Tab>
   <Tab title="PDF to Images (pdf2image)">
-    A PDF can be rasterised into one PNG image per page. This requires **pdf2image** and the **poppler** system library.
+    A PDF can be rasterised into one **PNG** image per page at 150 DPI. This requires **pdf2image** and the **poppler** system library.
 
-    **Supported target formats:** `png`, `jpg`, `jpeg`
+    **Supported target format:** `png` (PDF pages are always saved as PNG regardless of the `target_fmt` value)
 
     **Success response:**
     ```json
     {
       "type": "pdf_pages",
       "pages": [
-        "/media/converted/page_1.png",
-        "/media/converted/page_2.png"
+        "/media/converted/a1b2c3d4e5f6.png",
+        "/media/converted/9f8e7d6c5b4a.png"
       ],
       "count": 2
     }
     ```
+
+    Page files are saved to `MEDIA_ROOT/converted/` with 12-character UUID hex filenames.
 
     If `pdf2image` is not installed, the endpoint returns a `500` error:
     ```json
@@ -166,7 +179,7 @@ POST /var-cms/api/media/convert/
   </Tab>
 </Tabs>
 
-Converted files are saved to `MEDIA_ROOT/converted/` with UUID-based filenames.
+Converted files are saved to `MEDIA_ROOT/converted/` with 12-character UUID hex filenames.
 
 ---
 

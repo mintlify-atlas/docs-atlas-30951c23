@@ -8,7 +8,7 @@ The list view is the primary browsing interface for any registered model. django
 
 ## `list_display` — Table Columns
 
-`list_display` is a list of field names (or double-underscore traversal paths) that appear as columns in the list view table. If you leave it empty, django-var-cms automatically uses the first six fields from `model._meta.get_fields()`.
+`list_display` is a list of field names (or double-underscore traversal paths) that appear as columns in the list view table. If you leave it empty, django-var-cms automatically uses the first six fields returned by `model._meta.get_fields()`, skipping any many-to-many or reverse relation fields.
 
 ```python
 class ArticleAdmin(VarCMSModelAdmin):
@@ -21,13 +21,13 @@ The list view applies automatic display logic based on the underlying Django fie
 
 <CardGroup cols={3}>
   <Card title="ImageField" icon="image">
-    Rendered as a thumbnail `<img>` tag. Click the thumbnail to open a full modal preview. Thumbnail dimensions are controlled by `list_image_width` and `list_image_height`.
+    Rendered as a thumbnail `<img>` tag with the CSS class `preview-thumb` and a `data-preview` attribute. Thumbnail dimensions default to `38 × 38` px and are controlled by `list_image_width` and `list_image_height`.
   </Card>
   <Card title="FileField" icon="paperclip">
-    Rendered as a clickable icon link. The icon changes based on file extension — `video` for MP4/WebM, `music` for MP3/WAV, `file-text` for PDF, and `paperclip` for all other types.
+    Rendered as a clickable icon link. The Lucide icon changes by extension: `video` for MP4/WebM, `music` for MP3/WAV, `file-text` for PDF, and `paperclip` for all other types.
   </Card>
   <Card title="BooleanField" icon="check">
-    Rendered as a green check icon (`✓`) for `True` and a red X icon (`✗`) for `False`, using Lucide SVG icons.
+    Rendered as a green Lucide `check` icon for `True` and a red Lucide `x` icon for `False`.
   </Card>
 </CardGroup>
 
@@ -41,9 +41,11 @@ class ArticleAdmin(VarCMSModelAdmin):
     list_display = ["title", "category__name", "author", "status"]
 ```
 
+If `django.contrib.gis` is installed and a field is a GIS geometry type, the list view renders the geometry type name and coordinate count (e.g., `Point (1pts)`).
+
 ### `list_image_width` / `list_image_height`
 
-Control the pixel size of image thumbnails rendered in list columns. Defaults to `38 × 38` px.
+Control the pixel size of image thumbnails rendered in list columns. Both default to `38`.
 
 ```python
 class MediaAssetAdmin(VarCMSModelAdmin):
@@ -116,7 +118,7 @@ class CategoryAdmin(VarCMSModelAdmin):
 
 ## `list_per_page` — Pagination
 
-`list_per_page` controls how many rows appear on each page of the list view. The default is `25`. The paginator is Django's built-in `Paginator`.
+`list_per_page` controls how many rows appear on each page of the list view. The default is `25`. The paginator uses Django's built-in `Paginator` class.
 
 ```python
 class ArticleAdmin(VarCMSModelAdmin):
@@ -148,7 +150,7 @@ Every column header in the list view is clickable. Clicking a header sorts the l
 
 Example URL after clicking the `created_at` column header twice:
 
-```
+```text
 /var-cms/demo/article/?o=created_at&ot=desc
 ```
 
@@ -156,7 +158,7 @@ Example URL after clicking the `created_at` column header twice:
 
 ## Complete Example
 
-The following `CategoryAdmin` and `ArticleAdmin` classes from the demo app illustrate every list-view option working together:
+The following `CategoryAdmin`, `ArticleAdmin`, and `MediaAssetAdmin` classes from the demo app illustrate every list-view option working together:
 
 <Tabs>
   <Tab title="CategoryAdmin">
@@ -227,7 +229,7 @@ The following `CategoryAdmin` and `ArticleAdmin` classes from the demo app illus
     from .models import MediaAsset
 
     class MediaAssetAdmin(VarCMSModelAdmin):
-        # image  → thumbnail preview
+        # image  → thumbnail preview (38×38px by default)
         # file   → icon link (video/music/pdf/paperclip by extension)
         list_display  = ["title", "asset_type", "image", "file", "tags", "created_at"]
 

@@ -1,5 +1,5 @@
 ---
-title: "VarCMSModelAdmin Class Reference"
+title: "VarCMSModelAdmin Full API Reference for django-var-cms"
 sidebarTitle: "VarCMSModelAdmin"
 description: "Complete attribute and method reference for VarCMSModelAdmin — the base class used to register Django models with the django-var-cms Control Panel."
 ---
@@ -9,6 +9,19 @@ description: "Complete attribute and method reference for VarCMSModelAdmin — t
 ```python
 from var_cms.registry import var_cms_site, VarCMSModelAdmin
 ```
+
+---
+
+## Constructor
+
+### `__init__(model, site)`
+
+Called automatically by `var_cms_site.register()`. Sets `self.model` and `self.site`. If `list_display` is empty at construction time, it is auto-populated with the first six concrete (non-many-to-many, non-one-to-many) model fields.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `model` | `Type[Model]` | The Django model class being registered. |
+| `site` | `VarCMSSite` | The site instance that owns this admin. |
 
 ---
 
@@ -82,10 +95,10 @@ These attributes shape the add/edit form — which fields appear, how they look,
   ```
 </ParamField>
 
-<ParamField path="regex_validators" type="Dict[str, tuple]" default="{}">
+<ParamField path="regex_validators" type="Dict[str, Union[str, Tuple[str, str]]]" default="{}">
   Per-field regex validation applied both **server-side** (via Django's `RegexValidator`) and **client-side** (via the HTML `pattern` attribute).
 
-  The value for each field is a `(pattern, error_message)` tuple:
+  The value for each field is either a plain regex string or a `(pattern, error_message)` tuple:
 
   ```python
   regex_validators = {
@@ -270,7 +283,7 @@ These attributes shape the add/edit form — which fields appear, how they look,
   When `True`, a summary card for this model appears on the dashboard. The card shows a live object count and the buttons defined in `card_buttons`.
 </ParamField>
 
-<ParamField path="card_buttons" type="List[Dict]" default="[]">
+<ParamField path="card_buttons" type="List[Dict[str, str]]" default="[]">
   Quick-action buttons rendered at the bottom of the dashboard card. Each button is a dict with the following keys:
 
   | Key | Required | Description |
@@ -291,7 +304,7 @@ These attributes shape the add/edit form — which fields appear, how they look,
   ```
 </ParamField>
 
-<ParamField path="custom_object_actions" type="List[Dict]" default="[]">
+<ParamField path="custom_object_actions" type="List[Dict[str, Any]]" default="[]">
   Action buttons rendered in **list view row menus** and on **detail view pages**. Each action is a dict:
 
   | Key | Required | Description |
@@ -341,36 +354,36 @@ The default implementation calls `self.model._default_manager.all()`, optionally
 
 ---
 
-### `save_model(request, obj, form, change: bool)`
+### `apply_search(qs, query: str) → QuerySet`
 
-Called after `form.is_valid()` on both the add and edit views. Use this hook to run custom pre- or post-save logic.
-
-| Parameter | Type | Description |
-|---|---|---|
-| `request` | `HttpRequest` | The current request. |
-| `obj` | `Model instance` | The unsaved model instance (form data already applied). |
-| `form` | `ModelForm` | The validated form instance. |
-| `change` | `bool` | `False` on add, `True` on edit. |
-
-The **default implementation** auto-slugifies the `slug` field from `title`, `name`, or `headline` (in that priority) if `slug` is blank, then calls `obj.save()`.
+Filters the queryset by applying a case-insensitive `icontains` lookup across all `search_fields`, OR-joined into a single `Q` object. Returns `qs` unchanged when `query` is empty or `search_fields` is empty.
 
 ```python
-def save_model(self, request, obj, form, change: bool):
-    obj.author = request.user.get_username()
-    super().save_model(request, obj, form, change)
+def apply_search(self, qs, query: str):
+    if not query or not self.search_fields:
+        return qs
+    q = Q()
+    for f in self.search_fields:
+        q |= Q(**{f"{f}__icontains": query})
+    return qs.filter(q)
 ```
 
 ---
 
-### `delete_model(request, obj)`
+### `apply_filters(qs, params: dict) → QuerySet`
 
-Called when a delete is confirmed. Override to add cascading cleanup, audit logging, or soft-delete logic. The default implementation calls `obj.delete()`.
+Applies filter parameters (typically from `request.GET`) to the queryset. Keys ending in `__gte` or `__lte` are applied directly as range filters. Any remaining key that matches a concrete model field name is applied as an exact match. The reserved keys `q`, `page`, `o`, and `ot` are skipped.
 
 ```python
-def delete_model(self, request, obj):
-    # Archive instead of hard-delete
-    obj.status = "archived"
-    obj.save()
+def apply_filters(self, qs, params: dict):
+    for key, value in params.items():
+        if not value or key in ("q", "page", "o", "ot"):
+            continue
+        if key.endswith("__gte") or key.endswith("__lte"):
+            qs = qs.filter(**{key: value})
+        elif key in [f.name for f in self.model._meta.get_fields()]:
+            qs = qs.filter(**{key: value})
+    return qs
 ```
 
 ---
@@ -407,6 +420,76 @@ def save_model(self, request, obj, form, change: bool):
         obj.status = obj.__class__.objects.get(pk=obj.pk).status
     super().save_model(request, obj, form, change)
 ```
+
+---
+
+### `get_form(request, instance=None) → ModelForm`
+
+Builds and returns a bound or unbound `ModelForm` for the model. Called by both the add and edit views.
+
+- Excludes `exclude_fields` and `readonly_fields` from the form fields.
+- Applies `regex_validators` as server-side `RegexValidator` instances and adds the HTML `pattern` / `title` attributes to the corresponding widgets.
+- Injects `form_widget_classes`, `form_field_placeholders`, and `form_field_help_texts` into widget attributes.
+- For `POST` requests, binds `request.POST` and `request.FILES` to the form.
+- Disables fields that fall outside the current user's `get_editable_fields()` result.
+
+---
+
+### `save_model(request, obj, form, change: bool)`
+
+Called after `form.is_valid()` on both the add and edit views. Use this hook to run custom pre- or post-save logic.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `request` | `HttpRequest` | The current request. |
+| `obj` | `Model instance` | The unsaved model instance (form data already applied). |
+| `form` | `ModelForm` | The validated form instance. |
+| `change` | `bool` | `False` on add, `True` on edit. |
+
+The **default implementation** auto-slugifies the `slug` field from `title`, `name`, or `headline` (in that priority) if `slug` is blank, then calls `obj.save()`.
+
+```python
+def save_model(self, request, obj, form, change: bool):
+    obj.author = request.user.get_username()
+    super().save_model(request, obj, form, change)
+```
+
+---
+
+### `delete_model(request, obj)`
+
+Called when a delete is confirmed. Override to add cascading cleanup, audit logging, or soft-delete logic. The default implementation calls `obj.delete()`.
+
+```python
+def delete_model(self, request, obj):
+    # Archive instead of hard-delete
+    obj.status = "archived"
+    obj.save()
+```
+
+---
+
+### `get_card_buttons(request) → List[Dict[str, Any]]`
+
+Returns the list of button dicts rendered on the dashboard card. When `card_buttons` is empty, it auto-generates a **View List** button (if the user has `list` permission) and an **Add New** button (if the user has `add` permission). When `card_buttons` is set, each button with an `action` key of `"add"` or `"list"` has its URL resolved automatically — other button dicts are passed through unchanged.
+
+---
+
+### `get_column_header(field_name: str) → str`
+
+Returns the display label for a list view column. For a real model field, returns `field.verbose_name.title()`. For a traversal like `"category__name"`, the lookup is done on the first segment. For unmapped names (computed properties, etc.), the field name is formatted by replacing underscores and double-underscores with spaces/arrows and title-casing.
+
+---
+
+### `verbose_name` *(property)*
+
+Returns `self.model._meta.verbose_name`. Read-only.
+
+---
+
+### `verbose_name_plural` *(property)*
+
+Returns `self.model._meta.verbose_name_plural`. Read-only.
 
 ---
 

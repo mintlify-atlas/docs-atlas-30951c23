@@ -16,7 +16,7 @@ All branding settings live under the `VAR_CMS_` namespace. None are required; ea
 # settings.py
 
 VAR_CMS_SITE_HEADER  = "VAR CMS"                    # Panel title in header & login page
-VAR_CMS_SITE_SUB     = "ADMIN PANEL"                # Subtitle shown beneath the header
+VAR_CMS_SITE_SUB     = "CONTROL PANEL"              # Subtitle shown beneath the header
 VAR_CMS_SITE_URL     = "/"                          # "View Site" link target
 VAR_CMS_LOGO_URL     = "/static/var_cms/var.png"    # URL of the logo image
 VAR_CMS_ACCENT_COLOR = "142, 72%, 45%"              # HSL accent color (Emerald green)
@@ -63,7 +63,7 @@ VAR_CMS_ACCENT_COLOR = "0, 72%, 50%"     # Red
 ```
 
 <Tip>
-  The library **clamps the lightness value** to the range `45–85%` automatically. Values below 45 % (too dark to read on dark backgrounds) are raised to 45 %, and values above 85 % (too washed-out) are capped at 85 %. You never need to worry about accidentally choosing an inaccessible color.
+  The library **clamps the lightness value** to the range `45–85%` automatically. Values below 45% (too dark to read on dark backgrounds) are raised to 45%, and values above 85% (too washed-out) are capped at 85%. The clamped value is rounded to the nearest integer. You never need to worry about accidentally choosing an inaccessible color.
 </Tip>
 
 You can also set the accent color on `var_cms_site` at runtime:
@@ -124,7 +124,7 @@ var_cms_site.developer_email    = "you@example.com"
 var_cms_site.developer_image    = "https://github.com/you.png"
 ```
 
-All fields are optional. Omitted fields are simply not shown in the profile card.
+All six fields are optional. Omitted fields are simply not shown in the profile card.
 
 ---
 
@@ -141,8 +141,11 @@ All fields are optional. Omitted fields are simply not shown in the profile card
 | `VAR_CMS_LOGO_SVG` | `None` | Raw SVG string for a vector logo (overrides `LOGO_URL`) |
 | `VAR_CMS_ACCENT_COLOR` | `None` (library default) | HSL accent color string, e.g. `"142, 72%, 45%"` |
 | `VAR_CMS_ENABLE_OTP` | `False` | Enable email OTP 2FA on login |
+| `VAR_CMS_USERNAME_FIELD` | `None` (uses `AUTH_USER_MODEL.USERNAME_FIELD`) | Override the field used to look up users on the login and forgot-password forms |
 | `VAR_CMS_DASHBOARD_TITLE` | `"Command Hub"` | Heading shown on the dashboard |
-| `VAR_CMS_DASHBOARD_TEXT` | *(welcome string)* | Welcome text; supports `{username}` placeholder |
+| `VAR_CMS_DASHBOARD_TEXT` | *(welcome string)* | Welcome text; supports `{username}` and `{user}` placeholders |
+| `VAR_CMS_HIDDEN_DASHBOARD_CARDS` | `[]` | Model names or `app_label.model_name` values to hide from the dashboard |
+| `VAR_CMS_SHOWN_DASHBOARD_CARDS` | `[]` | When non-empty, only these models are shown on the dashboard |
 | `VAR_CMS_DEVELOPER_NAME` | `"Rahul Baberwal"` | Developer name in the Help section |
 | `VAR_CMS_DEVELOPER_WEBSITE` | `"https://rahulbaberwal.com"` | Developer website URL |
 | `VAR_CMS_DEVELOPER_GITHUB` | `"https://github.com/rahul-baberwal"` | GitHub profile URL |
@@ -162,8 +165,11 @@ var_cms_site.logo_url          # ← VAR_CMS_LOGO_URL
 var_cms_site.logo_svg          # ← VAR_CMS_LOGO_SVG
 var_cms_site.accent_color      # ← VAR_CMS_ACCENT_COLOR
 var_cms_site.enable_otp        # ← VAR_CMS_ENABLE_OTP
+var_cms_site.username_field    # ← VAR_CMS_USERNAME_FIELD
 var_cms_site.dashboard_title   # ← VAR_CMS_DASHBOARD_TITLE
 var_cms_site.dashboard_text    # ← VAR_CMS_DASHBOARD_TEXT
+var_cms_site.hidden_dashboard_cards  # ← VAR_CMS_HIDDEN_DASHBOARD_CARDS
+var_cms_site.shown_dashboard_cards   # ← VAR_CMS_SHOWN_DASHBOARD_CARDS
 var_cms_site.developer_name    # ← VAR_CMS_DEVELOPER_NAME
 var_cms_site.developer_website # ← VAR_CMS_DEVELOPER_WEBSITE
 var_cms_site.developer_github  # ← VAR_CMS_DEVELOPER_GITHUB

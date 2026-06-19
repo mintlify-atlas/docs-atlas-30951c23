@@ -1,7 +1,7 @@
 ---
 title: "RolePermission, UserPermission, and Permission Helpers"
 sidebarTitle: "Permissions"
-description: "API reference for RolePermission, GroupPermission, and UserPermission dataclasses plus the resolve_permission and resolve_editable_fields helper functions."
+description: "API reference for RolePermission, GroupPermission, and UserPermission dataclasses plus resolve_permission and resolve_editable_fields helpers."
 ---
 
 The `var_cms.permissions` module provides a lightweight, framework-independent set of dataclasses and pure-function helpers for role- and user-level access control. All permission evaluation in `VarCMSModelAdmin` goes through these primitives.
@@ -286,26 +286,24 @@ def permission_summary(permissions: List[RolePermission]) -> List[Dict]:
 
 Returns a serialisable list of dicts representing each permission entry. Useful for rendering permission tables in templates or returning them in an API response.
 
+The function iterates `permissions` and includes any entry that is an instance of `RolePermission` or `UserPermission` (checked via `isinstance(p, (RolePermission, UserPermission))`). Each included entry is rendered using `p.role` — this works for `RolePermission` and `GroupPermission` instances which have a `.role` attribute.
+
 **Returns:** A list of dicts, each containing `role`, `add`, `list`, `view`, `edit`, and `delete` keys.
 
 ```python
-from var_cms.permissions import RolePermission, UserPermission, permission_summary
+from var_cms.permissions import RolePermission, permission_summary
 
 perms = [
     RolePermission("superuser", add=True,  list=True, view=True, edit=True,  delete=True),
     RolePermission("editor",    add=True,  list=True, view=True, edit=True,  delete=False),
-    UserPermission("alice",     add=True,  list=True, view=True, edit=True,  delete=True),
 ]
 
 permission_summary(perms)
 # [
 #   {"role": "superuser", "add": True,  "list": True, "view": True, "edit": True,  "delete": True},
 #   {"role": "editor",    "add": True,  "list": True, "view": True, "edit": True,  "delete": False},
-#   {"role": "alice",     "add": True,  "list": True, "view": True, "edit": True,  "delete": True},
 # ]
 ```
-
-Both `RolePermission` and `UserPermission` instances are included in the output. The `role` key holds `.role` for `RolePermission` / `GroupPermission`, and `.username` for `UserPermission`.
 
 ---
 

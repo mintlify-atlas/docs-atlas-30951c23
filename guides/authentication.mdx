@@ -16,13 +16,15 @@ LOGIN_URL = "/var-cms/login/"
 LOGIN_REDIRECT_URL = "/var-cms/"
 ```
 
-If the user is already authenticated, visiting `/var-cms/login/` redirects straight to the dashboard index — no double-login prompt.
+The view uses Django's `AuthenticationForm` to validate credentials. On success it redirects to the dashboard index (`var_cms_index`). If the user is already authenticated, visiting `/var-cms/login/` redirects straight to the dashboard — no double-login prompt.
 
 ---
 
 ## Optional OTP Two-Factor Authentication
 
 By default, a correct username/password immediately logs the user in. When you enable OTP 2FA, a successful credential check instead sends a **6-digit one-time code** to the user's email address and redirects to the verification screen at `/var-cms/otp-verify/`. The user must enter the correct code to complete the login.
+
+Session keys used during the OTP flow: `var_cms_pre_otp_user_id` (authenticated user's ID) and `var_cms_otp` (the 6-digit code). Both keys are removed from the session once the user successfully verifies.
 
 <Steps>
   <Step title="Enable OTP in settings.py">
@@ -79,13 +81,21 @@ A **Forgot Password** link on the login screen lets users recover access without
 
 <Steps>
   <Step title="Enter username or email">
-    The user submits their Django username **or** email address. The view searches both fields, so either works.
+    The user submits their Django `USERNAME_FIELD` value **or** email address. The view queries both fields (when the model has an `email` field and `USERNAME_FIELD` is not `email`), so either works.
   </Step>
   <Step title="Receive a reset OTP">
-    A 6-digit reset code is emailed to the account's registered email address. As with login OTP, if SMTP is unavailable the code is printed to the terminal as `[VAR CMS RESET OTP]: ######`.
+    A 6-digit reset code is emailed to the account's registered email address. If the matched user has no email address set, the view returns the error: *"This user does not have an email address configured."*
+
+    As with the login OTP, if SMTP is unavailable the code is printed to the terminal:
+
+    ```
+    [VAR CMS RESET OTP]: 384729 for user admin
+    ```
+
+    The session stores the reset code as `var_cms_reset_otp` and the user's ID as `var_cms_reset_user_id`, then redirects to `/var-cms/forgot-password/verify/`.
   </Step>
   <Step title="Set a new password">
-    The user is taken to `/var-cms/forgot-password/verify/` where they enter the OTP plus their new password (confirmed twice). New passwords must be at least 6 characters. On success the user is redirected to the login page.
+    The user enters the OTP plus their new password (confirmed twice). New passwords must be at least 6 characters. On success the session keys are cleared and the user is redirected to the login page.
   </Step>
 </Steps>
 
@@ -144,7 +154,7 @@ EMAIL_HOST_PASSWORD = "your-smtp-password"
 
 | URL | Description |
 |-----|-------------|
-| `/var-cms/login/` | Glassmorphic login form |
+| `/var-cms/login/` | Glassmorphic login form (uses `AuthenticationForm`; redirects to dashboard on success) |
 | `/var-cms/otp-verify/` | OTP entry screen (only reached after valid credentials when OTP is enabled) |
 | `/var-cms/forgot-password/` | Enter username or email to start password recovery |
 | `/var-cms/forgot-password/verify/` | Enter reset OTP and choose a new password |

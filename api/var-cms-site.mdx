@@ -1,7 +1,7 @@
 ---
-title: "VarCMSSite Class and var_cms_site Singleton"
+title: "VarCMSSite Class and var_cms_site Singleton Reference"
 sidebarTitle: "VarCMSSite"
-description: "Reference for VarCMSSite methods and the global var_cms_site singleton used to register models, configure branding, and mount URL patterns in django-var-cms."
+description: "Reference for VarCMSSite methods and the global var_cms_site singleton — register models, configure branding, and mount URLs in django-var-cms."
 ---
 
 `VarCMSSite` is the central registry that maps Django models to their admin configurations, resolves URL patterns, and carries all branding and dashboard settings. You never instantiate it yourself — a single global instance named `var_cms_site` is created at module import time and is the object you import throughout your project.
@@ -47,6 +47,14 @@ The resulting URL structure is:
 /var-cms/api/media/crop/               → POST: crop image
 /var-cms/api/media/convert/            → POST: convert media file
 ```
+
+---
+
+## Registry Attribute
+
+<ParamField path="_registry" type="Dict[Type[Model], VarCMSModelAdmin]" default="{}">
+  Internal mapping from model class to its `VarCMSModelAdmin` instance. Populated by `register()` and cleared by `unregister()`. Use `get_model_admin()` to look up entries rather than accessing this dict directly.
+</ParamField>
 
 ---
 
@@ -265,6 +273,20 @@ Returns the complete list of URL patterns powering all CMS views: dashboard, log
 # var_cms/urls.py (internal — shown for reference)
 from .registry import var_cms_site
 urlpatterns = var_cms_site.get_urls()
+```
+
+---
+
+### `_get_username_field() → str`
+
+Returns the field name used to identify a user's username for `UserPermission` matching. If `self.username_field` is set, that value is returned directly. Otherwise it reads `User.USERNAME_FIELD` from the active auth user model (falling back to `"username"`).
+
+```python
+# Override via settings
+VAR_CMS_USERNAME_FIELD = "email"
+
+# Or override on the instance directly
+var_cms_site.username_field = "email"
 ```
 
 ---

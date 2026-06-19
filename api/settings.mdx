@@ -1,14 +1,14 @@
 ---
 title: "django-var-cms Settings Reference (VAR_CMS_* Variables)"
 sidebarTitle: "Settings"
-description: "Complete reference for all VAR_CMS_* Django settings that configure the django-var-cms Control Panel, including branding, authentication, dashboard, and developer profile options."
+description: "Full reference for all VAR_CMS_* Django settings: branding, authentication, dashboard cards, and developer profile for the django-var-cms Control Panel."
 ---
 
 All `django-var-cms` settings are **optional** Django settings prefixed with `VAR_CMS_`. They are read once during `VarCMSSite` initialization at Django startup. You can also set attributes directly on the `var_cms_site` singleton to override any of these values at import time (see [Programmatic Overrides](#programmatic-overrides) below).
 
 ## Complete Settings Example
 
-The block below shows every available `VAR_CMS_*` setting alongside the required Django settings for media handling and authentication routing.
+The block below shows every available `VAR_CMS_*` setting alongside the required Django settings for static files, media handling, and authentication routing.
 
 ```python
 # settings.py
@@ -18,6 +18,11 @@ INSTALLED_APPS = [
     "var_cms",
     "myapp",
 ]
+
+# ── Static files ─────────────────────────────────────────────────────────────
+STATIC_URL = "/static/"
+STATICFILES_DIRS = [BASE_DIR / "static"]
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # ── Media handling ───────────────────────────────────────────────────────────
 MEDIA_URL = "/media/"
@@ -105,7 +110,7 @@ VAR_CMS_DEVELOPER_IMAGE = "https://github.com/rahul-baberwal.png"
 <ParamField path="VAR_CMS_ACCENT_COLOR" type="Optional[str]" default="None">
   An HSL color string in `"H, S%, L%"` format applied as the theme accent color across buttons, highlights, and active states throughout the Control Panel.
 
-  The lightness component (`L%`) is automatically clamped between **45%** and **85%** to ensure readability in both light and dark contexts.
+  The lightness component (`L%`) is automatically clamped between **45%** and **85%** to ensure readability in both light and dark contexts. The value is stored internally as a formatted `"H, S%, L%"` string after clamping.
 
   ```python
   # Emerald green
@@ -304,6 +309,22 @@ The following table maps each `VAR_CMS_*` setting to its corresponding `var_cms_
 
 The following standard Django settings are not `VAR_CMS_*` prefixed, but must be configured correctly for `django-var-cms` to function fully.
 
+<ParamField path="LOGIN_URL" type="str">
+  The URL Django redirects unauthenticated users to when they attempt to access a `@login_required` view. Set this to the `django-var-cms` login page so users land on the custom glassmorphic login screen rather than Django's default.
+
+  ```python
+  LOGIN_URL = "/var-cms/login/"
+  ```
+</ParamField>
+
+<ParamField path="LOGIN_REDIRECT_URL" type="str">
+  The URL Django redirects users to after a successful login when no `next` parameter is present. Set to the `django-var-cms` dashboard root.
+
+  ```python
+  LOGIN_REDIRECT_URL = "/var-cms/"
+  ```
+</ParamField>
+
 <ParamField path="MEDIA_URL" type="str">
   The URL prefix used to serve user-uploaded files (images, files, cropped assets). Must end with a slash.
 
@@ -333,18 +354,26 @@ The following standard Django settings are not `VAR_CMS_*` prefixed, but must be
   </Warning>
 </ParamField>
 
-<ParamField path="LOGIN_URL" type="str">
-  The URL Django redirects unauthenticated users to when they attempt to access a `@login_required` view. Set this to the `django-var-cms` login page so users land on the custom glassmorphic login screen rather than Django's default.
+<ParamField path="STATIC_URL" type="str">
+  The URL prefix used to serve static files (CSS, JavaScript, images bundled with the package). Must end with a slash.
 
   ```python
-  LOGIN_URL = "/var-cms/login/"
+  STATIC_URL = "/static/"
   ```
 </ParamField>
 
-<ParamField path="LOGIN_REDIRECT_URL" type="str">
-  The URL Django redirects users to after a successful login when no `next` parameter is present. Set to the `django-var-cms` dashboard root.
+<ParamField path="STATICFILES_DIRS" type="list">
+  A list of filesystem directories Django searches for additional static files beyond each app's own `static/` subdirectory. Include your project-level `static/` folder here so custom logo assets and overrides are picked up.
 
   ```python
-  LOGIN_REDIRECT_URL = "/var-cms/"
+  STATICFILES_DIRS = [BASE_DIR / "static"]
+  ```
+</ParamField>
+
+<ParamField path="STATIC_ROOT" type="str">
+  The absolute filesystem path where `python manage.py collectstatic` assembles all static files for production deployment. Must differ from any path listed in `STATICFILES_DIRS`.
+
+  ```python
+  STATIC_ROOT = BASE_DIR / "staticfiles"
   ```
 </ParamField>

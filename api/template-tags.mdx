@@ -1,7 +1,7 @@
 ---
 title: "django-var-cms Template Tags and Filters Reference"
 sidebarTitle: "Template Tags"
-description: "Reference for all django-var-cms template tags including URL helpers (var_cms_list_url, var_cms_edit_url), field preview, query_transform, and form layout filters."
+description: "All django-var-cms template tags and filters: URL helpers, var_cms_field_preview, query_transform, safe_html, get_item, index, and form layout filters."
 ---
 
 The `var_cms_tags` library provides template tags and filters used throughout the django-var-cms admin interface. Load the library in any template before using its tags or filters:
@@ -117,7 +117,7 @@ Returns the URL for a custom object action registered on a `VarCMSModelAdmin`. T
 
 ### `var_cms_field_preview`
 
-Renders an inline HTML preview snippet for an `ImageField` or `FileField` on an existing model instance. Returns an empty string if the object is `None`, the field has no value, or the field is neither an `ImageField` nor a `FileField`.
+Renders an inline HTML preview snippet for an `ImageField` or `FileField` on an existing model instance. Returns an empty string if the object is `None`, the field has no value, or an exception occurs during rendering.
 
 ```
 {% var_cms_field_preview obj field_name %}
@@ -175,7 +175,7 @@ Renders an inline HTML preview snippet for an `ImageField` or `FileField` on an 
 
 ### `safe_html`
 
-Marks a string value as safe HTML, bypassing Django's auto-escaping. Equivalent to the built-in `|safe` filter.
+Marks a string value as safe HTML, bypassing Django's auto-escaping. Equivalent to calling `mark_safe()`.
 
 ```html
 {{ article.body|safe_html }}
@@ -185,7 +185,7 @@ Marks a string value as safe HTML, bypassing Django's auto-escaping. Equivalent 
 
 ### `get_item`
 
-Dictionary lookup filter. Returns `dictionary[key]` or `None` if the key is absent or the value is not a dict-like object.
+Dictionary lookup filter. Returns `dictionary.get(key)` or `None` if the key is absent or the object does not have a `get` method.
 
 ```html
 {{ my_dict|get_item:some_key }}
@@ -262,9 +262,9 @@ These filters are used internally by django-var-cms form templates to drive the 
 
 Returns a CSS `grid-column: span N;` style string for the given bound field. The filter resolves the span using the following priority order:
 
-1. **`form_field_widths`** — explicit override on the admin class.
-2. **`form_field_rows`** — if the field is part of a row group, span is computed as `12 ÷ len(row)`.
-3. **Default heuristic** — `Textarea` and `Checkbox` widgets span 12 columns (full width); all other inputs span 6 columns (half width).
+1. **`form_field_widths`** — explicit override on the admin class. Maps a field's `html_name` to a width preset string.
+2. **`form_field_rows`** — if the field is listed in a row group, span is computed as `12 ÷ len(row)`, floored to at least `1`.
+3. **Default heuristic** — `Checkbox` and `Textarea` widgets span 12 columns (full width); all other inputs span 6 columns (half width).
 
 If the admin class defines `form_field_styles` for the field, those inline styles are appended to the result.
 
@@ -299,29 +299,19 @@ If the admin class defines `form_field_styles` for the field, those inline style
 
 ### `field_widget_type`
 
-Returns the custom widget type string for a field, as defined in `form_field_widgets` on the `VarCMSModelAdmin` class. Returns an empty string if no custom widget is configured.
+Returns the custom widget type string for a field, looked up from `form_field_widgets` on the `VarCMSModelAdmin` class using `field.html_name`. Returns an empty string if no custom widget is configured for that field.
 
 ```html
 {{ field|field_widget_type:admin }}
 ```
-
-**Possible return values:**
-
-| Value | Widget behaviour |
-| ----- | ---------------- |
-| `"select"` | Standard HTML `<select>` dropdown |
-| `"select_search"` | Searchable dropdown with live filter input |
-| `"multiselect"` | Checkbox list for multi-selection |
-| `"multiselect_search"` | Checkbox list with a search/filter input |
-| `""` *(empty)* | No override — default Django widget renders |
 
 **Example usage:**
 
 ```html
 {% load var_cms_tags %}
 {% with widget_type=field|field_widget_type:admin %}
-  {% if widget_type == "select_search" %}
-    {# Render custom searchable select #}
+  {% if widget_type %}
+    {# Render custom widget based on widget_type value #}
   {% else %}
     {{ field }}
   {% endif %}

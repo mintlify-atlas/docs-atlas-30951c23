@@ -1,10 +1,10 @@
 ---
-title: "Form Layouts, Widgets, and Field Customization in django-var-cms"
+title: "Form Layouts and Widget Customization in django-var-cms"
 sidebarTitle: "Form Layouts"
 description: "Configure 12-column grid widths, field row grouping, custom widgets, placeholders, help texts, and the Quill.js rich text editor in django-var-cms forms."
 ---
 
-django-var-cms renders every add/edit form on a **12-column CSS grid**. You can control the width of each field, group fields into visual rows, enable a rich text editor, enforce regex patterns, swap in custom dropdown widgets, and inject arbitrary CSS classes, inline styles, placeholders, and help text — all from your `VarCMSModelAdmin` subclass without touching any template.
+django-var-cms renders every add/edit form on a **12-column CSS grid**. You can control the width of each field, group fields into visual rows, enable a rich text editor, enforce regex patterns, swap in custom dropdown widgets, and inject CSS classes, inline styles, placeholders, and help text — all from your `VarCMSModelAdmin` subclass without touching any template.
 
 ---
 
@@ -35,6 +35,8 @@ class ArticleAdmin(VarCMSModelAdmin):
   Width presets that add up to 12 columns will sit side-by-side on a single visual row (e.g., `"two-thirds"` + `"one-third"` = 8 + 4 = 12). Fields that don't sum to 12 wrap naturally.
 </Tip>
 
+`form_field_widths` takes the **highest priority** in the layout system. A field listed in `form_field_widths` always uses its explicit preset, regardless of any `form_field_rows` grouping for that field.
+
 ---
 
 ## Field Row Grouping — `form_field_rows`
@@ -45,7 +47,7 @@ class ArticleAdmin(VarCMSModelAdmin):
 - A row of **3 fields** → each field gets 4 columns (`"one-third"`)
 - A row of **4 fields** → each field gets 3 columns (`"one-fourth"`)
 
-Fields listed in a row **override** any individual `form_field_widths` setting for those fields. Fields not listed in any row continue to use the default heuristic (full-width for textareas and checkboxes, half-width for everything else).
+`form_field_rows` is evaluated **after** `form_field_widths`. If a field already has an entry in `form_field_widths`, that explicit preset wins and the row grouping is ignored for that field.
 
 ```python
 class CustomerAdmin(VarCMSModelAdmin):
@@ -55,18 +57,18 @@ class CustomerAdmin(VarCMSModelAdmin):
     ]
 ```
 
+Fields not listed in any row continue to use the default heuristic: full-width for textareas and checkboxes, half-width for everything else.
+
 ---
 
 ## Rich Text Editor — `html_fields`
 
-Add any `TextField` name to `html_fields` to replace the plain `<textarea>` with a **Quill.js** rich text editor. The editor is fully embedded — no external CDN or additional configuration is required.
+Add any `TextField` name to `html_fields` to replace the plain `<textarea>` with a **Quill.js** rich text editor. The editor is fully embedded — no external CDN or additional configuration is required. Non-html `TextField` fields receive a plain `<textarea>` with `rows=4`.
 
 ```python
 class ArticleAdmin(VarCMSModelAdmin):
-    html_fields = ["body"]   # Quill.js editor on the body field
-```
+    html_fields = ["body"]   # Quill.js editor with rows=10
 
-```python
 class PageAdmin(VarCMSModelAdmin):
     html_fields = ["body"]   # works on any TextField
 ```
@@ -77,7 +79,7 @@ The raw HTML produced by Quill is stored directly in the database column, exactl
 
 ## Regex Validators — `regex_validators`
 
-`regex_validators` maps a field name to a `(pattern, message)` tuple. django-var-cms applies the validation **both** client-side (HTML5 `pattern` and `title` attributes on the input widget) **and** server-side (Django `RegexValidator` attached to the form field), ensuring consistent enforcement regardless of whether JavaScript is enabled.
+`regex_validators` maps a field name to a `(pattern, message)` tuple. django-var-cms applies the validation **both** client-side (HTML5 `pattern` and `title` attributes on the input widget) **and** server-side (a Django `RegexValidator` attached to the form field), ensuring consistent enforcement regardless of whether JavaScript is enabled.
 
 ```python
 class CategoryAdmin(VarCMSModelAdmin):
@@ -105,12 +107,12 @@ class CustomerAdmin(VarCMSModelAdmin):
 
 `form_field_widgets` maps a field name to a widget type string, giving you control over how `ForeignKey`, `CharField` with choices, and `ManyToManyField` fields are rendered in the form.
 
-| Widget type | Rendered as | Best for |
+| Widget type | Rendered as | CSS classes applied |
 |---|---|---|
-| `"select"` | Standard `<select>` dropdown | Default — no override needed |
-| `"select_search"` | Searchable dropdown with live filter input | `ForeignKey` fields with many options |
-| `"multiselect"` | Checkbox list (all choices visible) | `ManyToManyField` with a small option set |
-| `"multiselect_search"` | Checkbox list with a search/filter input above | `ManyToManyField` with a large option set |
+| `"select"` | Standard `<select>` dropdown | *(no override — Django default)* |
+| `"select_search"` | Searchable `<select>` with live filter | `vcms-searchable-select` |
+| `"multiselect"` | `CheckboxSelectMultiple` (all choices visible) | `vcms-checkbox-multi` |
+| `"multiselect_search"` | `CheckboxSelectMultiple` with a search input | `vcms-checkbox-multi vcms-checkbox-search` |
 
 ```python
 class OrderAdmin(VarCMSModelAdmin):
@@ -122,20 +124,20 @@ class OrderAdmin(VarCMSModelAdmin):
 ```
 
 <Note>
-  `"multiselect"` and `"multiselect_search"` are designed for `ManyToManyField` relationships. Use `"select_search"` for `ForeignKey` fields instead.
+  `"multiselect"` and `"multiselect_search"` use `CheckboxSelectMultiple` and are designed for `ManyToManyField` relationships. Use `"select_search"` for `ForeignKey` fields instead.
 </Note>
 
 ---
 
 ## Widget CSS Classes — `form_widget_classes`
 
-`form_widget_classes` injects CSS class names directly onto the underlying `<input>`, `<select>`, or `<textarea>` HTML element (not the container div). Use this for custom component libraries or design tokens.
+`form_widget_classes` injects CSS class names directly onto the underlying `<input>`, `<select>`, or `<textarea>` HTML element. The classes are **appended** to any existing class attributes already on the widget.
 
 ```python
 class ArticleAdmin(VarCMSModelAdmin):
     form_widget_classes = {
-        "title": "form-control-lg",   # injected onto <input>
-        "body":  "editor-full",       # injected onto <textarea>
+        "title": "form-control-lg",   # appended onto <input>
+        "body":  "editor-full",       # appended onto <textarea>
     }
 ```
 
@@ -158,7 +160,7 @@ class ArticleAdmin(VarCMSModelAdmin):
 
 ## Help Text — `form_field_help_texts`
 
-`form_field_help_texts` overrides the help text shown beneath a field in the form. This takes precedence over any `help_text` defined on the model field itself.
+`form_field_help_texts` sets the `help_text` property on each form field, overriding any `help_text` defined on the model field itself.
 
 ```python
 class ArticleAdmin(VarCMSModelAdmin):
@@ -168,6 +170,14 @@ class ArticleAdmin(VarCMSModelAdmin):
         "tags":  "Comma-separated list of tags, e.g. python, django, web.",
     }
 ```
+
+---
+
+## Readonly Fields and Disabled Fields
+
+Fields listed in `readonly_fields` are excluded from the form entirely and displayed separately as static values. They cannot be edited by any user.
+
+Per-role edit control is handled through `role_editable_fields`. When a user's role restricts editable fields to a subset, any form field **not** in that subset has `field.disabled = True` applied — the field remains visible in the form but cannot be changed.
 
 ---
 
@@ -232,8 +242,9 @@ class ArticleAdmin(VarCMSModelAdmin):
         "rating":   "one-fourth",   # 3 cols
     }
 
-    # ── Row grouping (overrides form_field_widths for listed fields) ──────────
-    # Uncomment to use row grouping instead of manual widths:
+    # ── Row grouping (used only for fields NOT in form_field_widths) ──────────
+    # form_field_rows is evaluated after form_field_widths, so fields already
+    # listed in form_field_widths keep their explicit preset.
     # form_field_rows = [
     #     ["title", "status"],
     #     ["category", "author"],

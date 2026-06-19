@@ -43,15 +43,15 @@ VAR_CMS_HIDDEN_DASHBOARD_CARDS = ["logentry", "demo.category"]
 VAR_CMS_SHOWN_DASHBOARD_CARDS = ["invoice", "customer"]
 ```
 
-<Note>
-  `VAR_CMS_SHOWN_DASHBOARD_CARDS` takes priority: when it is non-empty, only the listed models are shown and `dashboard_card = True` on other models is ignored. Use either `HIDDEN` or `SHOWN`, not both, to keep your intent clear.
-</Note>
+The precedence order for any given model card is evaluated as follows in `index_view`:
 
-The precedence order for any given model card is:
-
-1. If `VAR_CMS_SHOWN_DASHBOARD_CARDS` is set, the card is shown only if the model is in that list.
-2. If `VAR_CMS_HIDDEN_DASHBOARD_CARDS` contains the model, the card is hidden.
+1. If `VAR_CMS_SHOWN_DASHBOARD_CARDS` is non-empty, a card is shown **only** if the model is listed there; all others are hidden regardless of their `dashboard_card` attribute.
+2. If `VAR_CMS_HIDDEN_DASHBOARD_CARDS` contains the model (checked by `model_name` or `app_label.model_name`), the card is **always hidden** — this overrides even `VAR_CMS_SHOWN_DASHBOARD_CARDS`.
 3. Otherwise, the card follows the `dashboard_card` attribute on the admin class.
+
+<Note>
+  Because `VAR_CMS_HIDDEN_DASHBOARD_CARDS` is applied after `VAR_CMS_SHOWN_DASHBOARD_CARDS`, a model that appears in both lists will be hidden. Keep the lists mutually exclusive to avoid confusion.
+</Note>
 
 ---
 
@@ -65,7 +65,16 @@ VAR_CMS_DASHBOARD_TITLE = "Command Hub"            # default: "Command Hub"
 VAR_CMS_DASHBOARD_TEXT  = "Welcome back, {username}. Your central command is active."
 ```
 
-The `{username}` placeholder in `VAR_CMS_DASHBOARD_TEXT` is replaced at render time with the current user's username.
+The `VAR_CMS_DASHBOARD_TEXT` value is rendered with Python's `str.format()` at request time. Two placeholders are available:
+
+| Placeholder | Value |
+|-------------|-------|
+| `{username}` | The current user's username |
+| `{user}` | Same as `{username}` (alias) |
+
+The default welcome text is:
+
+> *"Welcome back, {username}. Your central command is active. Seamlessly manage database models, publish rich dynamic content, crop media assets, and orchestrate translation systems in real time."*
 
 ---
 

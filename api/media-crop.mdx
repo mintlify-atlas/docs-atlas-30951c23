@@ -1,7 +1,7 @@
 ---
-title: "POST /var-cms/api/media/crop/ — Crop and Transform Images"
+title: "django-var-cms Media Crop API — Crop and Transform Images"
 sidebarTitle: "Media Crop"
-description: "POST /var-cms/api/media/crop/ crops, rotates, and flips an existing image in MEDIA_ROOT. Returns the URL and path of the new cropped image saved under MEDIA_ROOT/crops/."
+description: "POST endpoint that crops, rotates, and flips an image in MEDIA_ROOT. Returns the URL, path, format, and dimensions of the new file saved under crops/."
 ---
 
 The crop endpoint accepts a media file path and crop coordinates, applies optional rotation and flip transforms, saves the result as a new file under `MEDIA_ROOT/crops/`, and returns a JSON response with the URL, path, format, and dimensions of the cropped image. The source image is never modified — a fresh file with a UUID-based name is always written.
@@ -33,35 +33,35 @@ Send parameters as `application/x-www-form-urlencoded` (standard HTML form POST 
 </ParamField>
 
 <ParamField body="x" type="number" required>
-  Left offset of the crop box in pixels, measured from the left edge of the (post-transform) image.
+  Left offset of the crop box in pixels, measured from the left edge of the (post-transform) image. Accepted as a float and converted to `int` internally.
 </ParamField>
 
 <ParamField body="y" type="number" required>
-  Top offset of the crop box in pixels, measured from the top edge of the (post-transform) image.
+  Top offset of the crop box in pixels, measured from the top edge of the (post-transform) image. Accepted as a float and converted to `int` internally.
 </ParamField>
 
 <ParamField body="w" type="number" required>
-  Width of the crop box in pixels. Must be greater than `0` for cropping to be applied.
+  Width of the crop box in pixels. Accepted as a float and converted to `int` internally. Must be greater than `0` for cropping to be applied.
 </ParamField>
 
 <ParamField body="h" type="number" required>
-  Height of the crop box in pixels. Must be greater than `0` for cropping to be applied.
+  Height of the crop box in pixels. Accepted as a float and converted to `int` internally. Must be greater than `0` for cropping to be applied.
 </ParamField>
 
 <ParamField body="rotate" type="number" default="0">
-  Rotation angle in degrees. Applied **before** the crop is taken. Positive values rotate clockwise; the image canvas expands to fit the rotated result (`expand=True`).
+  Rotation angle in degrees. Applied **after** flipping and **before** the crop is taken. Positive values rotate clockwise; the image canvas expands to fit the rotated result (`expand=True`).
 </ParamField>
 
 <ParamField body="scale_x" type="number" default="1">
-  Horizontal flip control. Pass `-1` to mirror the image left-to-right, `1` for normal orientation.
+  Horizontal flip control. Pass `-1` to mirror the image left-to-right (`FLIP_LEFT_RIGHT`), `1` for normal orientation.
 </ParamField>
 
 <ParamField body="scale_y" type="number" default="1">
-  Vertical flip control. Pass `-1` to mirror the image top-to-bottom, `1` for normal orientation.
+  Vertical flip control. Pass `-1` to mirror the image top-to-bottom (`FLIP_TOP_BOTTOM`), `1` for normal orientation.
 </ParamField>
 
 <ParamField body="format" type="string">
-  Output image format. Accepted values: `jpeg`, `png`, `webp`. When omitted, the format defaults to the same format as the source image. JPEG output automatically converts RGBA images to RGB.
+  Output image format. Accepted values: `jpeg`, `png`, `webp`. When omitted, the format defaults to the same format as the source image, falling back to `PNG` if the source extension is unrecognised. JPEG output automatically converts RGBA images to RGB.
 </ParamField>
 
 ---
@@ -87,7 +87,7 @@ Send parameters as `application/x-www-form-urlencoded` (standard HTML form POST 
 </ResponseField>
 
 <ResponseField name="size" type="array">
-  Two-element integer array `[width, height]` representing the pixel dimensions of the saved crop.
+  Two-element integer array `[width, height]` representing the pixel dimensions of the cropped image.
 
   **Example:** `[400, 300]`
 </ResponseField>
@@ -100,7 +100,7 @@ Send parameters as `application/x-www-form-urlencoded` (standard HTML form POST 
   | Status | `error` value | Cause |
   | ------ | ------------- | ----- |
   | `400`  | `"file_path required"` | The `file_path` POST parameter was missing or empty. |
-  | `400`  | `"Invalid params: ..."` | One or more of `x`, `y`, `w`, `h`, `rotate`, `scale_x`, `scale_y` could not be parsed as a number. |
+  | `400`  | `"Invalid params: ..."` | One or more of `x`, `y`, `w`, `h`, `rotate`, `scale_x`, `scale_y` could not be parsed as a number (`ValueError` or `TypeError`). |
   | `404`  | `"File not found"` | The resolved absolute path does not exist inside `MEDIA_ROOT`. |
   | `500`  | `"Pillow not installed. Run: uv add pillow"` | The Pillow library is not available in the current Python environment. |
 </ResponseField>
@@ -150,8 +150,9 @@ curl -X POST http://localhost:8000/var-cms/api/media/crop/ \
 
 Transforms are applied in the following order before the crop box is extracted:
 
-1. **Flip** — `scale_x = -1` flips left-to-right; `scale_y = -1` flips top-to-bottom.
-2. **Rotate** — the image is rotated by `-rotate` degrees with canvas expansion enabled.
-3. **Crop** — the region `(x, y, x+w, y+h)` is extracted from the transformed image.
+1. **Flip horizontal** — `scale_x = -1` flips left-to-right (`FLIP_LEFT_RIGHT`).
+2. **Flip vertical** — `scale_y = -1` flips top-to-bottom (`FLIP_TOP_BOTTOM`).
+3. **Rotate** — the image is rotated by `-rotate` degrees (i.e. positive `rotate` values rotate clockwise) with canvas expansion enabled (`expand=True`).
+4. **Crop** — the region `(x, y, x+w, y+h)` is extracted from the transformed image.
 
 This matches the coordinate system used by Cropper.js, which reports crop coordinates relative to the already-transformed canvas.

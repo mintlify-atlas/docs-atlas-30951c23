@@ -1,7 +1,7 @@
 ---
-title: "Registering Django Models with django-var-cms"
+title: "Registering Models with django-var-cms VarCMSModelAdmin"
 sidebarTitle: "Registering Models"
-description: "Learn how to create var_cms_admin.py files, define VarCMSModelAdmin subclasses, and register Django models with the global var_cms_site registry."
+description: "Create var_cms_admin.py files, define VarCMSModelAdmin subclasses, and register or unregister Django models with the global var_cms_site registry."
 ---
 
 When `var_cms` starts up, it automatically iterates every entry in `INSTALLED_APPS` and attempts to import `{app}.var_cms_admin` for each app. This means you never need to manually wire up any import — simply create the file in your app directory and django-var-cms will discover and load it at startup, registering all of your models with the global `var_cms_site` registry.
@@ -12,7 +12,7 @@ When `var_cms` starts up, it automatically iterates every entry in `INSTALLED_AP
   <Step title="Create the file">
     Inside any Django app that you want to expose in the CMS, create a file named `var_cms_admin.py` at the root of that app:
 
-    ```
+    ```text
     myapp/
     ├── models.py
     ├── views.py
@@ -55,7 +55,7 @@ When `var_cms` starts up, it automatically iterates every entry in `INSTALLED_AP
 
 ## Class Attributes Reference
 
-Every attribute on `VarCMSModelAdmin` is optional — sensible defaults are applied automatically. The table below covers all basic configuration options.
+Every attribute on `VarCMSModelAdmin` is optional — sensible defaults are applied automatically. The table below covers all configuration options.
 
 | Attribute | Type | Default | Description |
 |---|---|---|---|
@@ -65,10 +65,24 @@ Every attribute on `VarCMSModelAdmin` is optional — sensible defaults are appl
 | `ordering` | `list[str]` | `[]` | Default queryset ordering (prefix `-` for descending) |
 | `list_per_page` | `int` | `25` | Number of rows per page in the list view |
 | `list_select_related` | `bool` | `False` | Call `select_related()` on the queryset to reduce N+1 queries |
+| `list_image_width` | `int` | `38` | Pixel width of image thumbnails in list columns |
+| `list_image_height` | `int` | `38` | Pixel height of image thumbnails in list columns |
 | `readonly_fields` | `list[str]` | `[]` | Fields always displayed but never editable |
 | `exclude_fields` | `list[str]` | `[]` | Fields hidden from the form entirely |
+| `html_fields` | `list[str]` | `[]` | `TextField` names that get a Quill.js rich text editor |
+| `regex_validators` | `dict[str, tuple]` | `{}` | Per-field `(pattern, message)` tuples applied client-side and server-side |
+| `form_field_widths` | `dict[str, str]` | `{}` | Named grid-width preset per field (`"full"`, `"half"`, etc.) |
+| `form_field_rows` | `list[list[str]]` | `[]` | Groups of fields sharing a single visual row with equal column widths |
+| `form_field_widgets` | `dict[str, str]` | `{}` | Custom widget type per field (`"select_search"`, `"multiselect"`, etc.) |
+| `form_widget_classes` | `dict[str, str]` | `{}` | CSS classes appended to the input/select/textarea element |
+| `form_field_placeholders` | `dict[str, str]` | `{}` | HTML `placeholder` attribute per field |
+| `form_field_help_texts` | `dict[str, str]` | `{}` | Help text shown beneath each field (overrides model-level help_text) |
+| `form_field_classes` | `dict[str, str]` | `{}` | CSS classes added to the field's wrapper `<div>` |
+| `form_field_styles` | `dict[str, str]` | `{}` | Inline CSS styles added to the field's wrapper `<div>` |
 | `icon` | `str` | `""` | Lucide icon name displayed beside the model in the sidebar and dashboard |
 | `dashboard_card` | `bool` | `False` | Whether this model appears as a card on the dashboard |
+| `card_buttons` | `list[dict]` | `[]` | Navigation buttons on the dashboard card (see [Custom Actions](/guides/custom-actions)) |
+| `custom_object_actions` | `list[dict]` | `[]` | Per-object action buttons on list and detail views (see [Custom Actions](/guides/custom-actions)) |
 
 ### The `icon` attribute
 
@@ -117,7 +131,7 @@ VAR_CMS_SHOWN_DASHBOARD_CARDS  = ["article", "invoice"]
 Call `var_cms_site.unregister()` to remove a previously registered model. This is useful when you want to override a registration made in a third-party app:
 
 ```python
-from var_cms.registry import var_cms_site
+from var_cms.registry import var_cms_site, VarCMSModelAdmin
 from third_party_app.models import SomeModel
 
 # Remove the default registration
@@ -136,7 +150,7 @@ var_cms_site.register(SomeModel, MySomeModelAdmin)
 
 ### `save_model(request, obj, form, change)`
 
-Called whenever an object is saved (both create and update). The default implementation auto-populates `slug` from `title`/`name`/`headline` if the field is empty, then calls `obj.save()`.
+Called whenever an object is saved (both create and update). The default implementation checks whether the model has a `slug` field and, if it is empty, auto-generates a slug from the first non-empty value found in `title`, `name`, or `headline`, then calls `obj.save()`.
 
 | Parameter | Description |
 |---|---|

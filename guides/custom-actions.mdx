@@ -1,7 +1,7 @@
 ---
-title: "Custom Object Actions in django-var-cms List and Detail Views"
+title: "Custom Object Actions and Card Buttons in django-var-cms"
 sidebarTitle: "Custom Actions"
-description: "Add custom action buttons like Approve, Send Email, or Mark Active to list rows and detail pages using custom_object_actions on VarCMSModelAdmin."
+description: "Add custom action buttons like Approve, Send Email, or Toggle Active to list rows and detail pages using custom_object_actions on VarCMSModelAdmin."
 ---
 
 `custom_object_actions` lets you attach one-click action buttons to both the **list view** (per-row) and the **detail view** of any registered model. Common use cases include approving records, sending transactional emails, toggling status flags, triggering webhooks, or generating reports — all without leaving the CMS interface.
@@ -64,19 +64,19 @@ def action_fn(self, request, obj):
 
 Each action is registered at a predictable URL. You can construct it manually or use the `var_cms_action_url` template tag:
 
-```
+```text
 /var-cms/{app_label}/{model_name}/{pk}/action/{action_name}/
 ```
 
 For example, the `"approve"` action on company `42` in a `crm` app resolves to:
 
-```
+```text
 /var-cms/crm/company/42/action/approve/
 ```
 
 ## Permissions
 
-The action view requires **edit permission** by default. A user who does not have edit access on the model will receive a `403 Forbidden` response when attempting to trigger any action.
+The action view requires **edit permission** (`has_permission(request, "edit")`) by default. A user who does not have edit access on the model will receive a `403 Forbidden` response when attempting to trigger any action.
 
 ---
 
@@ -207,7 +207,31 @@ While `custom_object_actions` places buttons on individual object rows, `card_bu
 | `label` | Button text |
 | `action` | Built-in action: `"list"` (go to list view) or `"add"` (go to add form) |
 | `url` | Any custom relative or absolute URL (used when `action` is not set) |
-| `class` | Optional CSS class: `"btn-primary"`, `"btn-ghost"`, `"btn-danger"`, etc. |
+| `class` | Optional CSS class: `"btn-primary"`, `"btn-ghost"`, `"btn-danger"`, `"btn-green"`, `"btn-blue"` |
+
+### Default buttons
+
+When `card_buttons` is not set (or is an empty list), django-var-cms automatically generates two default buttons for the card, subject to the user's permissions:
+
+- **"View List"** (`btn-ghost`) — shown if the user has `list` permission
+- **"Add New"** (`btn-primary`) — shown if the user has `add` permission
+
+### Custom buttons
+
+Define `card_buttons` to replace the defaults with your own set. When `action` is `"list"` or `"add"`, django-var-cms resolves the correct CMS URL automatically:
+
+```python
+class ArticleAdmin(VarCMSModelAdmin):
+    icon           = "file-text"
+    dashboard_card = True
+
+    card_buttons = [
+        {"label": "All Articles",  "action": "list"},
+        {"label": "Write Draft",   "action": "add"},
+    ]
+```
+
+You can also supply a raw `url` for buttons that point outside the CMS:
 
 ```python
 class ArticleAdmin(VarCMSModelAdmin):
@@ -220,8 +244,6 @@ class ArticleAdmin(VarCMSModelAdmin):
         {"label": "External Docs", "url": "https://example.com/docs", "class": "btn-ghost"},
     ]
 ```
-
-When `action` is `"list"` or `"add"`, django-var-cms resolves the correct CMS URL automatically. The button is hidden if the current user lacks the corresponding permission (list or add).
 
 <Warning>
   `card_buttons` controls navigation shortcuts on the dashboard card — it does not restrict which users can access those views. Permission enforcement is handled separately by the `permissions` list on your admin class.

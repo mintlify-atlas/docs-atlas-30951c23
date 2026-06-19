@@ -92,6 +92,7 @@ Simple taxonomy model for grouping articles.
 | `slug` | `SlugField` | Unique; regex-validated (`^[a-z0-9-]+$`) |
 | `description` | `TextField` | Optional |
 | `is_active` | `BooleanField` | Toggled via a custom object action |
+| `created_at` | `DateTimeField` | Auto-set on creation |
 
 ### Article
 
@@ -108,6 +109,8 @@ The primary content model. Demonstrates Quill editor, FK relationships, and mult
 | `is_featured` | `BooleanField` | — |
 | `view_count` | `PositiveIntegerField` | Read-only |
 | `rating` | `DecimalField` | Nullable, 1 decimal place |
+| `created_at` | `DateTimeField` | Auto-set on creation |
+| `updated_at` | `DateTimeField` | Auto-updated on save |
 
 ### MediaAsset
 
@@ -122,6 +125,7 @@ Demonstrates `ImageField`, `FileField`, modal-based previews, and the built-in i
 | `alt_text` | `CharField` | Optional accessibility label |
 | `description` | `TextField` | Optional |
 | `tags` | `CharField` | Comma-separated tag string |
+| `created_at` | `DateTimeField` | Auto-set on creation |
 
 ### Page
 
@@ -137,6 +141,7 @@ Hierarchical CMS page model with self-referential parent FK and Quill body.
 | `is_published` | `BooleanField` | — |
 | `show_in_nav` | `BooleanField` | — |
 | `sort_order` | `PositiveSmallIntegerField` | Controls ordering |
+| `created_at` | `DateTimeField` | Auto-set on creation |
 
 ## Complete `var_cms_admin.py` reference
 

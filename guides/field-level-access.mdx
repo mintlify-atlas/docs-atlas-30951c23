@@ -1,7 +1,7 @@
 ---
 title: "Field-Level Edit Access Control by Role in django-var-cms"
 sidebarTitle: "Field-Level Access"
-description: "Restrict which form fields each Django group role can edit using role_editable_fields, while readonly_fields prevent editing for all users regardless of role."
+description: "Restrict which form fields each role can edit using role_editable_fields, while readonly_fields are excluded from the form entirely for all users."
 ---
 
 django-var-cms provides two independent layers of field access control that work together to give you precise RBAC over what each user can modify on a form. The first layer, `readonly_fields`, is a hard global lock — those fields are shown to everyone but cannot be edited by anyone. The second layer, `role_editable_fields`, is a per-role allowlist that controls which of the remaining fields a user with a given role is actually allowed to change. Together they let you express rules like "authors can only touch the title, body, and status fields, while editors also control the slug and category."
@@ -178,7 +178,9 @@ var_cms_site.register(Article, ArticleAdmin)
 | editor | `title`, `slug`, `body`, `status`, `category`, `is_featured` | `created_at`, `updated_at`, `view_count` | `author`, `rating` |
 | author | `title`, `body`, `status` | `created_at`, `updated_at`, `view_count` | `slug`, `author`, `category`, `is_featured`, `rating` |
 | viewer | — (no edit permission) | `created_at`, `updated_at`, `view_count` | All fields |
-| alice | All fields (UserPermission override) | `created_at`, `updated_at`, `view_count` | None |
+| alice | — (role resolves to `"viewer"`, hits `"*": []`) | `created_at`, `updated_at`, `view_count` | All fields |
+
+`alice` is in the `viewer` group, so `_get_user_role()` returns `"viewer"`. `resolve_editable_fields` only uses the resolved role — not the username — so her `UserPermission` entry has no effect on field access. The `"*": []` wildcard applies, and all form fields are disabled even though her `UserPermission` grants `edit=True` at the action level.
 
 </Accordion>
 
